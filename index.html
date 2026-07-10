@@ -471,8 +471,12 @@
               <option value="cut">Taglio netto</option>
               <option value="slide-left">Scorrimento sinistra</option>
               <option value="slide-right">Scorrimento destra</option>
+              <option value="slide-up">Scorrimento su</option>
+              <option value="slide-down">Scorrimento giù</option>
               <option value="wipe-left">Tendina sinistra</option>
               <option value="wipe-right">Tendina destra</option>
+              <option value="iris">Iris (cerchio)</option>
+              <option value="blur-dissolve">Sfocatura incrociata</option>
               <option value="zoom-blend">Zoom blend</option>
               <option value="flash">Flash bianco</option>
             </select>
@@ -739,6 +743,38 @@
         drawImageWithEffect(curIm, curProgress);
         ctx.save(); ctx.beginPath(); ctx.rect(0, 0, t*CANVAS_W, CANVAS_H); ctx.clip();
         drawImageWithEffect(nextIm, 0); ctx.restore();
+        break;
+      }
+      case 'slide-up': {
+        ctx.save(); ctx.translate(0, -t*CANVAS_H); drawImageWithEffect(curIm, curProgress); ctx.restore();
+        ctx.save(); ctx.translate(0, CANVAS_H*(1-t)); drawImageWithEffect(nextIm, 0); ctx.restore();
+        break;
+      }
+      case 'slide-down': {
+        ctx.save(); ctx.translate(0, t*CANVAS_H); drawImageWithEffect(curIm, curProgress); ctx.restore();
+        ctx.save(); ctx.translate(0, -CANVAS_H*(1-t)); drawImageWithEffect(nextIm, 0); ctx.restore();
+        break;
+      }
+      case 'iris': {
+        drawImageWithEffect(curIm, curProgress);
+        const maxR = Math.hypot(CANVAS_W/2, CANVAS_H/2);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(CANVAS_W/2, CANVAS_H/2, maxR*t, 0, Math.PI*2);
+        ctx.clip();
+        drawImageWithEffect(nextIm, 0);
+        ctx.restore();
+        break;
+      }
+      case 'blur-dissolve': {
+        const blurAmt = Math.sin(t*Math.PI) * 18; // peaks mid-transition
+        ctx.save();
+        ctx.filter = `blur(${blurAmt}px)`;
+        ctx.globalAlpha = 1 - t;
+        drawImageWithEffect(curIm, curProgress);
+        ctx.globalAlpha = t;
+        drawImageWithEffect(nextIm, 0);
+        ctx.restore();
         break;
       }
       case 'wipe-right': {
@@ -1137,4 +1173,3 @@
 </script>
 </body>
 </html>
-
