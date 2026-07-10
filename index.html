@@ -35,13 +35,15 @@
     overflow-x: hidden;
     width: 100%;
   }
-  body{ padding-bottom: 48px; }
+  body{ padding-bottom: max(48px, env(safe-area-inset-bottom)); }
 
   header{
-    padding: 20px 18px 14px;
+    padding: max(20px, env(safe-area-inset-top)) 18px 14px;
     border-bottom: 1px solid var(--line);
     position: sticky; top:0; background: var(--bg); z-index: 20;
+    display:flex; align-items:flex-start; justify-content:space-between; gap:10px;
   }
+  header .titleBlock{ flex:1; min-width:0; }
   header h1{
     margin:0; font-size: 1.15rem; letter-spacing: 0.02em; font-weight: 700;
   }
@@ -50,6 +52,12 @@
     background: var(--amber); margin-right:8px; box-shadow: 0 0 8px var(--amber);
   }
   header p{ margin: 4px 0 0; color: var(--muted); font-size: 0.82rem; }
+  #resetBtn{
+    flex-shrink:0; background: transparent; border: 1px solid var(--line); color: var(--muted);
+    border-radius: 8px; padding: 8px 12px; font-size: 0.78rem; font-weight:600; cursor:pointer;
+    min-height: 40px; white-space: nowrap;
+  }
+  #resetBtn:active{ border-color: var(--danger); color: var(--danger); }
 
   main{ padding: 16px; display:flex; flex-direction:column; gap: 22px; max-width: 520px; margin: 0 auto; }
 
@@ -168,8 +176,11 @@
 <body>
 
 <header>
-  <h1><span class="dot"></span>Reel Animator</h1>
-  <p>Foto → video animato verticale · Fwd Studio</p>
+  <div class="titleBlock">
+    <h1><span class="dot"></span>Reel Animator</h1>
+    <p>Foto → video animato verticale · Fwd Studio</p>
+  </div>
+  <button id="resetBtn" title="Ricomincia da zero">↺ Reset</button>
 </header>
 
 <main>
@@ -1065,6 +1076,50 @@
     }finally{
       exportBtn.disabled = false;
     }
+  });
+
+  // ---------- Reset ----------
+  document.getElementById('resetBtn').addEventListener('click', () => {
+    if(images.length === 0 && texts.length === 0 && !music) return;
+    const ok = window.confirm('Ricominciare da zero? Foto, testi, musica e stile impostati andranno persi.');
+    if(!ok) return;
+
+    playing = false;
+    if(rafHandle) cancelAnimationFrame(rafHandle);
+    if(music){ music.audioEl.pause(); music = null; }
+
+    images = [];
+    texts = [];
+    scrubTime = 0;
+
+    currentFilter = 'none';
+    filterSelect.value = 'none';
+    vignette = { enabled: false, intensity: 0.5 };
+    vignetteEnabled.checked = false;
+    vignetteIntensity.value = '0.5';
+    vignetteIntensity.disabled = true;
+    watermark = { enabled: false, text: 'Fwd Studio', position: 'bottom-right', opacity: 0.8 };
+    watermarkEnabled.checked = false;
+    watermarkOptions.style.display = 'none';
+    watermarkText.value = 'Fwd Studio';
+    watermarkPosition.value = 'bottom-right';
+    watermarkOpacity.value = '0.8';
+
+    audioEmpty.style.display = '';
+    audioControls.style.display = 'none';
+
+    playBtn.textContent = '▶︎ Play';
+    downloadLink.style.display = 'none';
+    previewVideo.style.display = 'none';
+    saveNote.style.display = 'none';
+    exportStatus.textContent = '';
+    exportStatus.className = 'status';
+
+    renderFilmstrip();
+    renderOverlays();
+    updateSectionsVisibility();
+    updateScrubberRange();
+    renderFrame(0);
   });
 
   // init
