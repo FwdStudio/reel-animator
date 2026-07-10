@@ -210,8 +210,78 @@
     </div>
   </div>
 
+  <div class="card" id="audioCard" style="display:none;">
+    <h2>5 · Musica di sottofondo</h2>
+    <div id="audioEmpty" class="empty" style="padding:0 0 10px;">Nessuna traccia caricata</div>
+    <div id="audioControls" style="display:none;">
+      <div class="row" style="display:flex; gap:8px; align-items:center; margin-bottom:10px;">
+        <span id="audioName" style="font-size:0.85rem; color:var(--teal); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
+        <button class="icon-btn danger" id="audioRemoveBtn">✕</button>
+      </div>
+      <div class="row" style="display:flex; gap:8px; margin-bottom:8px;">
+        <div style="flex:1;">
+          <label style="font-size:0.72rem; color:var(--muted);">Volume</label>
+          <input type="range" id="audioVolume" min="0" max="1" step="0.05" value="0.8" style="width:100%;">
+        </div>
+        <div style="flex:1;">
+          <label style="font-size:0.72rem; color:var(--muted);">Inizio traccia (s)</label>
+          <input type="number" id="audioOffset" min="0" step="0.5" value="0" style="width:100%; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px;">
+        </div>
+      </div>
+    </div>
+    <div class="btn-row">
+      <label class="btn secondary" for="audioInput">Carica traccia</label>
+    </div>
+    <input type="file" id="audioInput" accept="audio/*">
+    <div class="note">Carica un brano dalla tua libreria (assicurati di averne i diritti d'uso). Durante l'export, se il browser lo supporta, la musica viene inclusa nel video; altrimenti solo il video verrà esportato.</div>
+  </div>
+
+  <div class="card" id="styleCard" style="display:none;">
+    <h2>6 · Stile</h2>
+
+    <div style="margin-bottom:14px;">
+      <label style="font-size:0.72rem; color:var(--muted); display:block; margin-bottom:4px;">Filtro colore</label>
+      <select id="filterSelect" style="width:100%; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px;">
+        <option value="none">Nessuno</option>
+        <option value="bw">Bianco e nero</option>
+        <option value="sepia">Seppia</option>
+        <option value="contrast">Alto contrasto</option>
+        <option value="vintage">Vintage</option>
+      </select>
+    </div>
+
+    <div style="margin-bottom:14px;">
+      <label style="display:flex; align-items:center; gap:8px; font-size:0.85rem; margin-bottom:6px;">
+        <input type="checkbox" id="vignetteEnabled"> Vignettatura ai bordi
+      </label>
+      <input type="range" id="vignetteIntensity" min="0.1" max="0.8" step="0.05" value="0.5" style="width:100%;" disabled>
+    </div>
+
+    <div>
+      <label style="display:flex; align-items:center; gap:8px; font-size:0.85rem; margin-bottom:6px;">
+        <input type="checkbox" id="watermarkEnabled"> Watermark / logo testuale
+      </label>
+      <div id="watermarkOptions" style="display:none; flex-direction:column; gap:8px;">
+        <input type="text" id="watermarkText" value="Fwd Studio" placeholder="Testo watermark"
+          style="background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px; font-size:0.85rem;">
+        <div class="row" style="display:flex; gap:8px;">
+          <select id="watermarkPosition" style="flex:1; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px;">
+            <option value="bottom-right">In basso a destra</option>
+            <option value="bottom-left">In basso a sinistra</option>
+            <option value="top-right">In alto a destra</option>
+            <option value="top-left">In alto a sinistra</option>
+          </select>
+          <div style="flex:1;">
+            <label style="font-size:0.68rem; color:var(--muted);">Opacità</label>
+            <input type="range" id="watermarkOpacity" min="0.2" max="1" step="0.05" value="0.8" style="width:100%;">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="card" id="exportCard" style="display:none;">
-    <h2>5 · Esporta</h2>
+    <h2>7 · Esporta</h2>
     <div class="btn-row">
       <button class="btn" id="exportBtn">Genera video</button>
     </div>
@@ -247,18 +317,41 @@
   let scrubTime = 0;
   let rafHandle = null;
 
+  let music = null; // { name, audioEl, volume, offset }
+
+  let currentFilter = 'none';
+  let vignette = { enabled: false, intensity: 0.5 };
+  let watermark = { enabled: false, text: 'Fwd Studio', position: 'bottom-right', opacity: 0.8 };
+
   const fileInput = document.getElementById('fileInput');
   const dropZone = document.getElementById('dropZone');
   const filmstripCard = document.getElementById('filmstripCard');
   const filmstrip = document.getElementById('filmstrip');
   const previewCard = document.getElementById('previewCard');
   const textCard = document.getElementById('textCard');
+  const audioCard = document.getElementById('audioCard');
   const exportCard = document.getElementById('exportCard');
   const overlayList = document.getElementById('overlayList');
   const playBtn = document.getElementById('playBtn');
   const scrubber = document.getElementById('scrubber');
   const timecodeEl = document.getElementById('timecode');
   const exportBtn = document.getElementById('exportBtn');
+  const audioInput = document.getElementById('audioInput');
+  const audioEmpty = document.getElementById('audioEmpty');
+  const audioControls = document.getElementById('audioControls');
+  const audioName = document.getElementById('audioName');
+  const audioVolume = document.getElementById('audioVolume');
+  const audioOffset = document.getElementById('audioOffset');
+  const audioRemoveBtn = document.getElementById('audioRemoveBtn');
+  const styleCard = document.getElementById('styleCard');
+  const filterSelect = document.getElementById('filterSelect');
+  const vignetteEnabled = document.getElementById('vignetteEnabled');
+  const vignetteIntensity = document.getElementById('vignetteIntensity');
+  const watermarkEnabled = document.getElementById('watermarkEnabled');
+  const watermarkOptions = document.getElementById('watermarkOptions');
+  const watermarkText = document.getElementById('watermarkText');
+  const watermarkPosition = document.getElementById('watermarkPosition');
+  const watermarkOpacity = document.getElementById('watermarkOpacity');
   const exportStatus = document.getElementById('exportStatus');
   const downloadLink = document.getElementById('downloadLink');
   const previewVideo = document.getElementById('previewVideo');
@@ -273,6 +366,8 @@
     filmstripCard.style.display = has ? '' : 'none';
     previewCard.style.display = has ? '' : 'none';
     textCard.style.display = has ? '' : 'none';
+    audioCard.style.display = has ? '' : 'none';
+    styleCard.style.display = has ? '' : 'none';
     exportCard.style.display = has ? '' : 'none';
   }
 
@@ -689,20 +784,142 @@
     const next = images[idx+1];
     const inTransitionWindow = next && im.transition !== 'cut' && localTime > im.duration - CROSSFADE;
 
+    ctx.save();
+    ctx.filter = FILTER_CSS[currentFilter] || 'none';
     if(inTransitionWindow){
       const t = (localTime - (im.duration - CROSSFADE)) / CROSSFADE;
       drawTransition(im, next, progress, t, im.transition);
     } else {
       drawImageWithEffect(im, progress);
     }
+    ctx.restore();
 
+    drawVignette();
     drawTextOverlays(time);
+    drawWatermark();
 
     timecodeEl.textContent = `${time.toFixed(1)}s / ${total.toFixed(1)}s`;
     scrubber.value = String(Math.round(time*100));
   }
 
-  // ---------- Playback ----------
+  // ---------- Audio ----------
+  audioInput.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const audioEl = new Audio();
+      audioEl.src = reader.result;
+      audioEl.preload = 'auto';
+      music = { name: file.name, audioEl, volume: 0.8, offset: 0 };
+      audioEmpty.style.display = 'none';
+      audioControls.style.display = '';
+      audioName.textContent = file.name;
+      audioVolume.value = '0.8';
+      audioOffset.value = '0';
+      audioEl.volume = 0.8;
+    };
+    reader.readAsDataURL(file);
+    audioInput.value = '';
+  });
+
+  audioRemoveBtn.addEventListener('click', () => {
+    if(music){ music.audioEl.pause(); }
+    music = null;
+    audioEmpty.style.display = '';
+    audioControls.style.display = 'none';
+  });
+
+  audioVolume.addEventListener('input', e => {
+    if(music){ music.volume = parseFloat(e.target.value); music.audioEl.volume = music.volume; }
+  });
+
+  audioOffset.addEventListener('input', e => {
+    if(music){ music.offset = Math.max(0, parseFloat(e.target.value) || 0); }
+  });
+
+  function syncAudioToTime(t){
+    if(!music) return;
+    try{
+      music.audioEl.currentTime = music.offset + t;
+    }catch(e){ /* not ready yet */ }
+  }
+
+  // ---------- Style controls ----------
+  filterSelect.addEventListener('change', e => {
+    currentFilter = e.target.value;
+    renderFrame(scrubTime);
+  });
+
+  vignetteEnabled.addEventListener('change', e => {
+    vignette.enabled = e.target.checked;
+    vignetteIntensity.disabled = !vignette.enabled;
+    renderFrame(scrubTime);
+  });
+  vignetteIntensity.addEventListener('input', e => {
+    vignette.intensity = parseFloat(e.target.value);
+    renderFrame(scrubTime);
+  });
+
+  watermarkEnabled.addEventListener('change', e => {
+    watermark.enabled = e.target.checked;
+    watermarkOptions.style.display = watermark.enabled ? 'flex' : 'none';
+    renderFrame(scrubTime);
+  });
+  watermarkText.addEventListener('input', e => {
+    watermark.text = e.target.value;
+    renderFrame(scrubTime);
+  });
+  watermarkPosition.addEventListener('change', e => {
+    watermark.position = e.target.value;
+    renderFrame(scrubTime);
+  });
+  watermarkOpacity.addEventListener('input', e => {
+    watermark.opacity = parseFloat(e.target.value);
+    renderFrame(scrubTime);
+  });
+
+  const FILTER_CSS = {
+    none: 'none',
+    bw: 'grayscale(100%)',
+    sepia: 'sepia(80%) saturate(120%)',
+    contrast: 'contrast(130%) saturate(110%)',
+    vintage: 'sepia(30%) contrast(110%) saturate(85%) brightness(95%)'
+  };
+
+  function drawVignette(){
+    if(!vignette.enabled) return;
+    const grad = ctx.createRadialGradient(
+      CANVAS_W/2, CANVAS_H/2, CANVAS_H*0.32,
+      CANVAS_W/2, CANVAS_H/2, CANVAS_H*0.72
+    );
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, `rgba(0,0,0,${vignette.intensity})`);
+    ctx.save();
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,CANVAS_W,CANVAS_H);
+    ctx.restore();
+  }
+
+  function drawWatermark(){
+    if(!watermark.enabled || !watermark.text) return;
+    ctx.save();
+    ctx.globalAlpha = watermark.opacity;
+    ctx.font = '600 34px -apple-system, sans-serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur = 8;
+    const pad = 44;
+    let x, y;
+    switch(watermark.position){
+      case 'top-left': ctx.textAlign='left'; x=pad; y=pad+34; break;
+      case 'top-right': ctx.textAlign='right'; x=CANVAS_W-pad; y=pad+34; break;
+      case 'bottom-left': ctx.textAlign='left'; x=pad; y=CANVAS_H-pad; break;
+      default: ctx.textAlign='right'; x=CANVAS_W-pad; y=CANVAS_H-pad;
+    }
+    ctx.fillText(watermark.text, x, y);
+    ctx.restore();
+  }
   playBtn.addEventListener('click', ()=>{
     if(images.length===0) return;
     playing = !playing;
@@ -710,9 +927,11 @@
     if(playing){
       if(scrubTime >= totalDuration()) scrubTime = 0;
       playStart = performance.now() - scrubTime*1000;
+      if(music){ syncAudioToTime(scrubTime); music.audioEl.play().catch(()=>{}); }
       tick();
     } else if(rafHandle){
       cancelAnimationFrame(rafHandle);
+      if(music) music.audioEl.pause();
     }
   });
 
@@ -723,6 +942,7 @@
       playing = false; playBtn.textContent = '▶︎ Play';
       scrubTime = totalDuration();
       renderFrame(scrubTime);
+      if(music) music.audioEl.pause();
       return;
     }
     scrubTime = t;
@@ -733,6 +953,7 @@
   scrubber.addEventListener('input', ()=>{
     playing = false; playBtn.textContent = '▶︎ Play';
     scrubTime = parseInt(scrubber.value,10)/100;
+    if(music) music.audioEl.pause();
     renderFrame(scrubTime);
   });
 
@@ -769,15 +990,45 @@
     }
 
     try{
-      const stream = canvas.captureStream(30);
-      const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8_000_000 });
+      const canvasStream = canvas.captureStream(30);
+      let combinedStream = canvasStream;
+      let audioCtx = null;
+      let includesAudio = false;
+
+      if(music){
+        try{
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          const source = audioCtx.createMediaElementSource(music.audioEl);
+          const gain = audioCtx.createGain();
+          gain.gain.value = music.volume;
+          const dest = audioCtx.createMediaStreamDestination();
+          source.connect(gain);
+          gain.connect(dest);
+          gain.connect(audioCtx.destination); // so you can hear it while it exports too
+          const audioTrack = dest.stream.getAudioTracks()[0];
+          if(audioTrack){
+            combinedStream = new MediaStream([...canvasStream.getVideoTracks(), audioTrack]);
+            includesAudio = true;
+          }
+        }catch(audioErr){
+          console.warn('Musica non inclusa nell\'export (non supportata su questo browser):', audioErr);
+          combinedStream = canvasStream;
+        }
+      }
+
+      const recorder = new MediaRecorder(combinedStream, { mimeType: mime, videoBitsPerSecond: 8_000_000 });
       const chunks = [];
       recorder.ondataavailable = e => { if(e.data.size>0) chunks.push(e.data); };
 
       const done = new Promise(resolve => { recorder.onstop = resolve; });
 
+      if(music && includesAudio){
+        syncAudioToTime(0);
+        music.audioEl.play().catch(()=>{});
+      }
+
       recorder.start();
-      exportStatus.textContent = 'Registrazione in corso…';
+      exportStatus.textContent = includesAudio ? 'Registrazione in corso (con audio)…' : 'Registrazione in corso…';
 
       const total = totalDuration();
       const fps = 30;
@@ -789,6 +1040,8 @@
       renderFrame(total);
       await new Promise(r => setTimeout(r, 200));
       recorder.stop();
+      if(music) music.audioEl.pause();
+      if(audioCtx) audioCtx.close().catch(()=>{});
       await done;
 
       const blob = new Blob(chunks, { type: mime.split(';')[0] });
@@ -803,7 +1056,9 @@
       downloadLink.download = `reel-fwdstudio.${ext}`;
       downloadLink.style.display = 'inline-block';
       exportStatus.className = 'status ok';
-      exportStatus.textContent = `Video pronto (${ext.toUpperCase()}).`;
+      exportStatus.textContent = includesAudio
+        ? `Video pronto (${ext.toUpperCase()}) con audio.`
+        : `Video pronto (${ext.toUpperCase()}).` + (music ? ' Nota: la musica non è stata inclusa (non supportata su questo browser).' : '');
     }catch(err){
       exportStatus.className = 'status err';
       exportStatus.textContent = 'Errore durante l\'esportazione: ' + err.message;
