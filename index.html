@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Reel Animator — Fwd Studio</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#12151b">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Reel Animator">
+<style>
+  :root{
+    --bg: #12151b;
+    --surface: #1b212a;
+    --surface-2: #232b36;
+    --line: #2c3541;
+    --text: #e9e7e2;
+    --muted: #8b93a1;
+    --amber: #f0a63d;
+    --amber-dim: #7a5b28;
+    --teal: #49c9bd;
+    --danger: #e0654f;
+    --radius: 10px;
+    font-size: 16px;
+  }
+  *{ box-sizing: border-box; }
+  html,body{
+    margin:0; padding:0; background:var(--bg); color:var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    overflow-x: hidden;
+    width: 100%;
+  }
+  body{ padding-bottom: 48px; }
+
+  header{
+    padding: 20px 18px 14px;
+    border-bottom: 1px solid var(--line);
+    position: sticky; top:0; background: var(--bg); z-index: 20;
+  }
+  header h1{
+    margin:0; font-size: 1.15rem; letter-spacing: 0.02em; font-weight: 700;
+  }
+  header h1 .dot{
+    display:inline-block; width:8px; height:8px; border-radius:50%;
+    background: var(--amber); margin-right:8px; box-shadow: 0 0 8px var(--amber);
+  }
+  header p{ margin: 4px 0 0; color: var(--muted); font-size: 0.82rem; }
+
+  main{ padding: 16px; display:flex; flex-direction:column; gap: 22px; max-width: 520px; margin: 0 auto; }
+
+  .card{
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px;
+  }
+  .card h2{
+    margin: 0 0 12px; font-size: 0.72rem; text-transform: uppercase;
+    letter-spacing: 0.12em; color: var(--muted); font-weight: 700;
+  }
+
+  /* Upload */
+  .drop{
+    border: 1.5px dashed var(--line);
+    border-radius: var(--radius);
+    padding: 28px 14px;
+    text-align:center;
+    color: var(--muted);
+    font-size: 0.88rem;
+  }
+  .drop.drag{ border-color: var(--amber); color: var(--amber); }
+  input[type=file]{ display:none; }
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:6px;
+    background: var(--amber); color: #1a1206; border:none; border-radius: 8px;
+    padding: 11px 18px; font-size: 0.9rem; font-weight: 700; cursor:pointer;
+    min-height: 44px;
+  }
+  .btn.secondary{ background: var(--surface-2); color: var(--text); border:1px solid var(--line); }
+  .btn.danger{ background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+  .btn:disabled{ opacity: 0.4; }
+  .btn-row{ display:flex; gap:8px; flex-wrap:wrap; margin-top: 10px; }
+
+  /* Filmstrip — sprocket motif */
+  .filmstrip{ display:flex; flex-direction:column; gap:10px; }
+  .frame{
+    position:relative;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 10px 10px 20px;
+    display:flex; gap:12px;
+  }
+  .frame::before{
+    content:""; position:absolute; left:6px; top:8px; bottom:8px; width:4px;
+    background-image: radial-gradient(circle, var(--bg) 2px, transparent 2.2px);
+    background-size: 4px 10px; background-repeat: repeat-y;
+  }
+  .frame img{ width: 54px; height: 96px; object-fit: cover; border-radius:4px; flex-shrink:0; }
+  .frame .meta{ flex:1; min-width:0; display:flex; flex-direction:column; gap:6px; }
+  .frame .row{ display:flex; gap:6px; align-items:center; min-width:0; }
+  .frame .row select, .frame .row input{ min-width:0; flex:1; }
+  .frame .meta .idx{ font-size:0.7rem; color: var(--teal); font-family: ui-monospace, monospace; }
+  .frame select, .frame input[type=range]{
+    width:100%; background: var(--bg); color: var(--text); border:1px solid var(--line);
+    border-radius:6px; padding:6px; font-size: 0.82rem;
+  }
+  .frame .row{ display:flex; gap:6px; align-items:center; }
+  .frame .row label{ font-size: 0.72rem; color: var(--muted); width: 60px; flex-shrink:0; }
+  .frame .ctrls{ display:flex; flex-direction:column; gap:4px; flex-shrink:0; }
+  .icon-btn{
+    width:32px; height:32px; border-radius:6px; border:1px solid var(--line);
+    background: var(--bg); color: var(--muted); font-size:0.9rem; cursor:pointer;
+  }
+  .icon-btn.danger{ color: var(--danger); border-color: var(--danger); }
+
+  /* Preview */
+  #previewWrap{ display:flex; flex-direction:column; align-items:center; gap:10px; }
+  #stage{
+    width: 100%; max-width: 260px; aspect-ratio: 9/16;
+    background:#000; border-radius: 12px; overflow:hidden; border: 1px solid var(--line);
+  }
+  #stage canvas{ width:100%; height:100%; display:block; }
+  .transport{ display:flex; gap:10px; align-items:center; }
+  #scrubber{ width:100%; }
+  .timecode{ font-family: ui-monospace, monospace; font-size:0.78rem; color: var(--teal); }
+
+  /* Text overlays */
+  .overlay-item{
+    background: var(--surface-2); border:1px solid var(--line); border-radius:8px;
+    padding: 10px; display:flex; flex-direction:column; gap:6px; margin-bottom:8px;
+  }
+  .overlay-item textarea{
+    width:100%; background:var(--bg); color:var(--text); border:1px solid var(--line);
+    border-radius:6px; padding:8px; font-size:0.88rem; resize:vertical; min-height: 44px;
+  }
+  .overlay-item .row{ display:flex; gap:8px; flex-wrap:wrap; }
+  .overlay-item .row > div{ flex:1 1 90px; min-width:0; display:flex; flex-direction:column; gap:3px; }
+  .overlay-item label{ font-size:0.68rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; }
+  .overlay-item select, .overlay-item input[type=number]{
+    background: var(--bg); color: var(--text); border:1px solid var(--line);
+    border-radius:6px; padding:6px; font-size:0.82rem;
+  }
+
+  /* Export */
+  .status{ font-size: 0.82rem; color: var(--muted); margin-top: 8px; min-height: 18px; }
+  .status.err{ color: var(--danger); }
+  .status.ok{ color: var(--teal); }
+  a.download-link{
+    display:none; margin-top:10px; color: var(--amber); font-size:0.88rem; font-weight:700;
+    text-decoration: underline;
+  }
+  .note{ font-size:0.75rem; color: var(--muted); margin-top:10px; line-height:1.4; }
+
+  .empty{ text-align:center; color:var(--muted); font-size:0.85rem; padding: 10px 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span class="dot"></span>Reel Animator</h1>
+  <p>Foto → video animato verticale · Fwd Studio</p>
+</header>
+
+<main>
+
+  <div class="card">
+    <h2>1 · Immagini</h2>
+    <div class="drop" id="dropZone">
+      Tocca per scegliere le foto<br>(o trascinale qui da desktop)
+      <div class="btn-row" style="justify-content:center;">
+        <label class="btn" for="fileInput">Scegli foto</label>
+      </div>
+      <input type="file" id="fileInput" accept="image/*" multiple>
+    </div>
+  </div>
+
+  <div class="card" id="filmstripCard" style="display:none;">
+    <h2>2 · Sequenza</h2>
+    <div class="filmstrip" id="filmstrip"></div>
+  </div>
+
+  <div class="card" id="previewCard" style="display:none;">
+    <h2>3 · Anteprima</h2>
+    <div id="previewWrap">
+      <div id="stage"><canvas id="canvas" width="1080" height="1920"></canvas></div>
+      <div class="transport">
+        <button class="btn secondary" id="playBtn">▶︎ Play</button>
+        <span class="timecode" id="timecode">0.0s / 0.0s</span>
+      </div>
+      <input type="range" id="scrubber" min="0" max="1000" value="0">
+    </div>
+  </div>
+
+  <div class="card" id="textCard" style="display:none;">
+    <h2>4 · Testo (manuale)</h2>
+    <div id="overlayList"></div>
+    <div class="btn-row">
+      <button class="btn secondary" id="addTextBtn">+ Aggiungi testo</button>
+    </div>
+  </div>
+
+  <div class="card" id="exportCard" style="display:none;">
+    <h2>5 · Esporta</h2>
+    <div class="btn-row">
+      <button class="btn" id="exportBtn">Genera video</button>
+    </div>
+    <div class="status" id="exportStatus"></div>
+    <video id="previewVideo" playsinline webkit-playsinline controls style="display:none; width:100%; max-width:260px; border-radius:10px; margin-top:10px; background:#000;"></video>
+    <a class="download-link" id="downloadLink" download="reel.webm">⬇ Scarica il video (desktop)</a>
+    <div class="note" id="saveNote" style="display:none;">
+      <strong>Su iPhone:</strong> tocca il video qui sopra, poi l'icona di condivisione nel player e scegli "Salva video" per metterlo in Foto.
+    </div>
+    <div class="note">
+      Export via MediaRecorder. Questa anteprima in chat gira in un contenitore più limitato di Safari: se l'export non parte qui, salva il file .html e aprilo direttamente in Safari (non nell'app Claude) per il test più affidabile. Nessuna chiave API richiesta: tutto avviene nel browser.
+    </div>
+  </div>
+
+</main>
+
+<script>
+(function(){
+  "use strict";
+
+  const CANVAS_W = 1080, CANVAS_H = 1920;
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+
+  /** @type {{id:number, img:HTMLImageElement, duration:number, effect:string, transition:string}[]} */
+  let images = [];
+  /** @type {{id:number, text:string, start:number, end:number, position:string}[]} */
+  let texts = [];
+  let nextId = 1;
+
+  let playing = false;
+  let playStart = 0; // performance.now() offset
+  let scrubTime = 0;
+  let rafHandle = null;
+
+  const fileInput = document.getElementById('fileInput');
+  const dropZone = document.getElementById('dropZone');
+  const filmstripCard = document.getElementById('filmstripCard');
+  const filmstrip = document.getElementById('filmstrip');
+  const previewCard = document.getElementById('previewCard');
+  const textCard = document.getElementById('textCard');
+  const exportCard = document.getElementById('exportCard');
+  const overlayList = document.getElementById('overlayList');
+  const playBtn = document.getElementById('playBtn');
+  const scrubber = document.getElementById('scrubber');
+  const timecodeEl = document.getElementById('timecode');
+  const exportBtn = document.getElementById('exportBtn');
+  const exportStatus = document.getElementById('exportStatus');
+  const downloadLink = document.getElementById('downloadLink');
+  const previewVideo = document.getElementById('previewVideo');
+  const saveNote = document.getElementById('saveNote');
+
+  function totalDuration(){
+    return images.reduce((s, im) => s + im.duration, 0);
+  }
+
+  function updateSectionsVisibility(){
+    const has = images.length > 0;
+    filmstripCard.style.display = has ? '' : 'none';
+    previewCard.style.display = has ? '' : 'none';
+    textCard.style.display = has ? '' : 'none';
+    exportCard.style.display = has ? '' : 'none';
+  }
+
+  // ---------- Upload ----------
+  fileInput.addEventListener('change', e => addFiles(e.target.files));
+  dropZone.addEventListener('click', (e) => {
+    // The "Scegli foto" label already opens the picker natively via its
+    // for="fileInput" attribute. Re-triggering fileInput.click() here too
+    // (e.g. when the click bubbles up from the label) caused a double-open
+    // that silently swallowed the file selection. Only open manually when
+    // the click landed on the drop zone itself, not on the label/button.
+    if (e.target.closest('label[for="fileInput"]')) return;
+    fileInput.click();
+  });
+  ['dragover','dragenter'].forEach(ev => dropZone.addEventListener(ev, e=>{
+    e.preventDefault(); dropZone.classList.add('drag');
+  }));
+  ['dragleave','drop'].forEach(ev => dropZone.addEventListener(ev, e=>{
+    e.preventDefault(); dropZone.classList.remove('drag');
+  }));
+  dropZone.addEventListener('drop', e=>{
+    if(e.dataTransfer && e.dataTransfer.files) addFiles(e.dataTransfer.files);
+  });
+
+  function addFiles(fileList){
+    const files = Array.from(fileList).filter(f => f.type.startsWith('image/'));
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          images.push({
+            id: nextId++,
+            img,
+            duration: 3,
+            effect: 'zoom-in',
+            transition: 'dissolve'
+          });
+          renderFilmstrip();
+          updateSectionsVisibility();
+          renderFrame(scrubTime);
+        };
+        img.onerror = () => {
+          console.error('Impossibile caricare l\'immagine:', file.name);
+        };
+        img.src = reader.result; // data: URL
+      };
+      reader.onerror = () => {
+        console.error('Impossibile leggere il file:', file.name);
+      };
+      reader.readAsDataURL(file);
+    });
+    fileInput.value = '';
+  }
+
+  // ---------- Filmstrip UI ----------
+  function renderFilmstrip(){
+    filmstrip.innerHTML = '';
+    images.forEach((im, i) => {
+      const frame = document.createElement('div');
+      frame.className = 'frame';
+      frame.innerHTML = `
+        <img src="${im.img.src}" alt="">
+        <div class="meta">
+          <div class="idx">#${i+1} · ${im.duration.toFixed(1)}s</div>
+          <div class="row">
+            <label>Movimento</label>
+            <select data-role="effect">
+              <option value="zoom-in">Zoom in</option>
+              <option value="zoom-out">Zoom out</option>
+              <option value="pan-left">Pan sinistra</option>
+              <option value="pan-right">Pan destra</option>
+              <option value="pan-up">Pan su</option>
+              <option value="pan-down">Pan giù</option>
+              <option value="zoom-in-pan-left">Zoom in + pan sinistra</option>
+              <option value="zoom-in-pan-right">Zoom in + pan destra</option>
+              <option value="zoom-out-pan-left">Zoom out + pan sinistra</option>
+              <option value="zoom-out-pan-right">Zoom out + pan destra</option>
+              <option value="static">Statico</option>
+            </select>
+          </div>
+          <div class="row">
+            <label>Durata</label>
+            <input type="range" data-role="duration" min="1" max="6" step="0.5" value="${im.duration}">
+          </div>
+          <div class="row">
+            <label>Transizione</label>
+            <select data-role="transition">
+              <option value="dissolve">Dissolvenza</option>
+              <option value="cut">Taglio netto</option>
+              <option value="slide-left">Scorrimento sinistra</option>
+              <option value="slide-right">Scorrimento destra</option>
+              <option value="wipe-left">Tendina sinistra</option>
+              <option value="wipe-right">Tendina destra</option>
+              <option value="zoom-blend">Zoom blend</option>
+              <option value="flash">Flash bianco</option>
+            </select>
+          </div>
+        </div>
+        <div class="ctrls">
+          <button class="icon-btn" data-action="up" ${i===0?'disabled':''}>↑</button>
+          <button class="icon-btn" data-action="down" ${i===images.length-1?'disabled':''}>↓</button>
+          <button class="icon-btn danger" data-action="del">✕</button>
+        </div>
+      `;
+      frame.querySelector('[data-role=effect]').value = im.effect;
+      frame.querySelector('[data-role=transition]').value = im.transition;
+
+      frame.querySelector('[data-role=effect]').addEventListener('change', e=>{
+        im.effect = e.target.value; renderFrame(scrubTime);
+      });
+      frame.querySelector('[data-role=transition]').addEventListener('change', e=>{
+        im.transition = e.target.value;
+      });
+      frame.querySelector('[data-role=duration]').addEventListener('input', e=>{
+        im.duration = parseFloat(e.target.value);
+        frame.querySelector('.idx').textContent = `#${i+1} · ${im.duration.toFixed(1)}s`;
+        updateScrubberRange();
+      });
+      frame.querySelector('[data-action=up]').addEventListener('click', ()=>{
+        if(i>0){ [images[i-1], images[i]] = [images[i], images[i-1]]; renderFilmstrip(); }
+      });
+      frame.querySelector('[data-action=down]').addEventListener('click', ()=>{
+        if(i<images.length-1){ [images[i+1], images[i]] = [images[i], images[i+1]]; renderFilmstrip(); }
+      });
+      frame.querySelector('[data-action=del]').addEventListener('click', ()=>{
+        images.splice(i,1); renderFilmstrip(); updateSectionsVisibility(); updateScrubberRange(); renderFrame(scrubTime);
+      });
+
+      filmstrip.appendChild(frame);
+    });
+    updateScrubberRange();
+  }
+
+  function updateScrubberRange(){
+    scrubber.max = String(Math.max(1, Math.round(totalDuration()*100)));
+    if(scrubTime > totalDuration()) scrubTime = 0;
+  }
+
+  // ---------- Text overlays ----------
+  document.getElementById('addTextBtn').addEventListener('click', ()=>{
+    texts.push({ id: nextId++, text: 'Il tuo testo qui', start: 0, end: Math.min(2, totalDuration()||2), position: 'bottom' });
+    renderOverlays();
+  });
+
+  function renderOverlays(){
+    overlayList.innerHTML = '';
+    if(texts.length===0){
+      overlayList.innerHTML = '<div class="empty">Nessun testo aggiunto</div>';
+      return;
+    }
+    texts.forEach((t, i) => {
+      const el = document.createElement('div');
+      el.className = 'overlay-item';
+      el.innerHTML = `
+        <textarea data-role="text">${t.text}</textarea>
+        <div class="row">
+          <div>
+            <label>Inizio (s)</label>
+            <input type="number" data-role="start" min="0" step="0.1" value="${t.start}">
+          </div>
+          <div>
+            <label>Fine (s)</label>
+            <input type="number" data-role="end" min="0" step="0.1" value="${t.end}">
+          </div>
+          <div>
+            <label>Posizione</label>
+            <select data-role="position">
+              <option value="top">Alto</option>
+              <option value="center">Centro</option>
+              <option value="bottom">Basso</option>
+            </select>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn danger" data-action="del">Rimuovi</button>
+        </div>
+      `;
+      el.querySelector('[data-role=position]').value = t.position;
+      el.querySelector('[data-role=text]').addEventListener('input', e=>{ t.text = e.target.value; renderFrame(scrubTime); });
+      el.querySelector('[data-role=start]').addEventListener('input', e=>{ t.start = parseFloat(e.target.value)||0; renderFrame(scrubTime); });
+      el.querySelector('[data-role=end]').addEventListener('input', e=>{ t.end = parseFloat(e.target.value)||0; renderFrame(scrubTime); });
+      el.querySelector('[data-role=position]').addEventListener('change', e=>{ t.position = e.target.value; renderFrame(scrubTime); });
+      el.querySelector('[data-action=del]').addEventListener('click', ()=>{ texts.splice(i,1); renderOverlays(); renderFrame(scrubTime); });
+      overlayList.appendChild(el);
+    });
+  }
+
+  // ---------- Rendering ----------
+  function coverRect(imgW, imgH, boxW, boxH){
+    const scale = Math.max(boxW/imgW, boxH/imgH);
+    const w = imgW*scale, h = imgH*scale;
+    return { w, h, x: (boxW-w)/2, y: (boxH-h)/2 };
+  }
+
+  function drawImageWithEffect(im, progress){
+    // progress: 0..1 across this image's duration
+    const base = coverRect(im.img.naturalWidth, im.img.naturalHeight, CANVAS_W, CANVAS_H);
+    // Extra zoom headroom so pans don't reveal edges
+    const zoomRange = 0.18;
+    let scale = 1, dx = 0, dy = 0;
+    const t = progress;
+    switch(im.effect){
+      case 'zoom-in':
+        scale = 1 + zoomRange * t; break;
+      case 'zoom-out':
+        scale = 1 + zoomRange * (1-t); break;
+      case 'pan-left':
+        scale = 1 + zoomRange; dx = (0.5 - t) * base.w * zoomRange; break;
+      case 'pan-right':
+        scale = 1 + zoomRange; dx = (t - 0.5) * base.w * zoomRange; break;
+      case 'pan-up':
+        scale = 1 + zoomRange; dy = (0.5 - t) * base.h * zoomRange; break;
+      case 'pan-down':
+        scale = 1 + zoomRange; dy = (t - 0.5) * base.h * zoomRange; break;
+      case 'zoom-in-pan-left':
+        scale = 1 + zoomRange * t; dx = (0.5 - t) * base.w * (zoomRange*0.6); break;
+      case 'zoom-in-pan-right':
+        scale = 1 + zoomRange * t; dx = (t - 0.5) * base.w * (zoomRange*0.6); break;
+      case 'zoom-out-pan-left':
+        scale = 1 + zoomRange * (1-t); dx = (0.5 - t) * base.w * (zoomRange*0.6); break;
+      case 'zoom-out-pan-right':
+        scale = 1 + zoomRange * (1-t); dx = (t - 0.5) * base.w * (zoomRange*0.6); break;
+      default:
+        scale = 1;
+    }
+    const w = base.w * scale, h = base.h * scale;
+    const x = base.x - (w-base.w)/2 + dx;
+    const y = base.y - (h-base.h)/2 + dy;
+    ctx.drawImage(im.img, x, y, w, h);
+  }
+
+  function drawTextOverlays(time){
+    texts.forEach(t => {
+      if(time < t.start || time > t.end) return;
+      ctx.save();
+      ctx.font = '700 56px -apple-system, sans-serif';
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.textAlign = 'center';
+      const lines = wrapText(t.text, CANVAS_W - 120, 56);
+      const lineHeight = 68;
+      const blockH = lines.length * lineHeight + 40;
+      let yTop;
+      if(t.position === 'top') yTop = 100;
+      else if(t.position === 'center') yTop = (CANVAS_H - blockH)/2;
+      else yTop = CANVAS_H - blockH - 140;
+
+      ctx.fillRect(60, yTop, CANVAS_W-120, blockH);
+      ctx.fillStyle = '#fff';
+      lines.forEach((line, i) => {
+        ctx.fillText(line, CANVAS_W/2, yTop + 50 + i*lineHeight);
+      });
+      ctx.restore();
+    });
+  }
+
+  function wrapText(text, maxWidth, fontSize){
+    ctx.font = `700 ${fontSize}px -apple-system, sans-serif`;
+    const words = text.split(/\s+/);
+    const lines = [];
+    let cur = '';
+    words.forEach(word => {
+      const test = cur ? cur + ' ' + word : word;
+      if(ctx.measureText(test).width > maxWidth && cur){
+        lines.push(cur); cur = word;
+      } else {
+        cur = test;
+      }
+    });
+    if(cur) lines.push(cur);
+    return lines;
+  }
+
+  function findImageAt(time){
+    let acc = 0;
+    for(let i=0;i<images.length;i++){
+      const d = images[i].duration;
+      if(time < acc + d || i === images.length-1){
+        return { im: images[i], idx: i, localTime: time - acc, acc };
+      }
+      acc += d;
+    }
+    return null;
+  }
+
+  function drawTransition(curIm, nextIm, curProgress, t, type){
+    switch(type){
+      case 'dissolve': {
+        ctx.globalAlpha = 1 - t; drawImageWithEffect(curIm, curProgress);
+        ctx.globalAlpha = t; drawImageWithEffect(nextIm, 0);
+        ctx.globalAlpha = 1;
+        break;
+      }
+      case 'slide-left': {
+        ctx.save(); ctx.translate(-t*CANVAS_W, 0); drawImageWithEffect(curIm, curProgress); ctx.restore();
+        ctx.save(); ctx.translate(CANVAS_W*(1-t), 0); drawImageWithEffect(nextIm, 0); ctx.restore();
+        break;
+      }
+      case 'slide-right': {
+        ctx.save(); ctx.translate(t*CANVAS_W, 0); drawImageWithEffect(curIm, curProgress); ctx.restore();
+        ctx.save(); ctx.translate(-CANVAS_W*(1-t), 0); drawImageWithEffect(nextIm, 0); ctx.restore();
+        break;
+      }
+      case 'wipe-left': {
+        drawImageWithEffect(curIm, curProgress);
+        ctx.save(); ctx.beginPath(); ctx.rect(0, 0, t*CANVAS_W, CANVAS_H); ctx.clip();
+        drawImageWithEffect(nextIm, 0); ctx.restore();
+        break;
+      }
+      case 'wipe-right': {
+        drawImageWithEffect(curIm, curProgress);
+        ctx.save(); ctx.beginPath(); ctx.rect(CANVAS_W*(1-t), 0, CANVAS_W*t, CANVAS_H); ctx.clip();
+        drawImageWithEffect(nextIm, 0); ctx.restore();
+        break;
+      }
+      case 'zoom-blend': {
+        ctx.globalAlpha = 1 - t; drawImageWithEffect(curIm, curProgress); ctx.globalAlpha = 1;
+        ctx.save();
+        const popScale = 1.06 - 0.06*t;
+        ctx.translate(CANVAS_W/2, CANVAS_H/2);
+        ctx.scale(popScale, popScale);
+        ctx.translate(-CANVAS_W/2, -CANVAS_H/2);
+        ctx.globalAlpha = t;
+        drawImageWithEffect(nextIm, 0);
+        ctx.restore();
+        ctx.globalAlpha = 1;
+        break;
+      }
+      case 'flash': {
+        if(t < 0.5){
+          drawImageWithEffect(curIm, curProgress);
+          ctx.fillStyle = `rgba(255,255,255,${t/0.5})`;
+        } else {
+          drawImageWithEffect(nextIm, 0);
+          ctx.fillStyle = `rgba(255,255,255,${(1-t)/0.5})`;
+        }
+        ctx.fillRect(0,0,CANVAS_W,CANVAS_H);
+        break;
+      }
+      default:
+        drawImageWithEffect(curIm, curProgress);
+    }
+  }
+
+  const CROSSFADE = 0.5; // seconds, transition window length
+
+  function renderFrame(time){
+    ctx.clearRect(0,0,CANVAS_W,CANVAS_H);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0,0,CANVAS_W,CANVAS_H);
+
+    if(images.length === 0) return;
+
+    const total = totalDuration();
+    time = Math.max(0, Math.min(time, total));
+    const found = findImageAt(time);
+    if(!found) return;
+    const { im, idx, localTime } = found;
+    const progress = im.duration > 0 ? Math.min(1, localTime / im.duration) : 1;
+
+    const next = images[idx+1];
+    const inTransitionWindow = next && im.transition !== 'cut' && localTime > im.duration - CROSSFADE;
+
+    if(inTransitionWindow){
+      const t = (localTime - (im.duration - CROSSFADE)) / CROSSFADE;
+      drawTransition(im, next, progress, t, im.transition);
+    } else {
+      drawImageWithEffect(im, progress);
+    }
+
+    drawTextOverlays(time);
+
+    timecodeEl.textContent = `${time.toFixed(1)}s / ${total.toFixed(1)}s`;
+    scrubber.value = String(Math.round(time*100));
+  }
+
+  // ---------- Playback ----------
+  playBtn.addEventListener('click', ()=>{
+    if(images.length===0) return;
+    playing = !playing;
+    playBtn.textContent = playing ? '❙❙ Pausa' : '▶︎ Play';
+    if(playing){
+      if(scrubTime >= totalDuration()) scrubTime = 0;
+      playStart = performance.now() - scrubTime*1000;
+      tick();
+    } else if(rafHandle){
+      cancelAnimationFrame(rafHandle);
+    }
+  });
+
+  function tick(){
+    if(!playing) return;
+    const t = (performance.now() - playStart)/1000;
+    if(t >= totalDuration()){
+      playing = false; playBtn.textContent = '▶︎ Play';
+      scrubTime = totalDuration();
+      renderFrame(scrubTime);
+      return;
+    }
+    scrubTime = t;
+    renderFrame(scrubTime);
+    rafHandle = requestAnimationFrame(tick);
+  }
+
+  scrubber.addEventListener('input', ()=>{
+    playing = false; playBtn.textContent = '▶︎ Play';
+    scrubTime = parseInt(scrubber.value,10)/100;
+    renderFrame(scrubTime);
+  });
+
+  function isIOS(){
+    const ua = navigator.userAgent;
+    return /iP(hone|od|ad)/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  }
+
+  // ---------- Export ----------
+  exportBtn.addEventListener('click', async ()=>{
+    if(images.length===0) return;
+    playing = false; playBtn.textContent = '▶︎ Play';
+    exportBtn.disabled = true;
+    downloadLink.style.display = 'none';
+    previewVideo.style.display = 'none';
+    saveNote.style.display = 'none';
+    exportStatus.className = 'status';
+    exportStatus.textContent = 'Preparazione…';
+
+    // On iOS/Safari, MediaRecorder.isTypeSupported can falsely report WebM
+    // (vp8/vp9) as supported, producing a file iOS can never actually play
+    // or save. Force MP4 there and skip WebM entirely.
+    const mimeCandidates = isIOS()
+      ? ['video/mp4', 'video/mp4;codecs=avc1']
+      : ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4'];
+    const mime = mimeCandidates.find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m));
+    if(!mime){
+      exportStatus.className = 'status err';
+      exportStatus.textContent = isIOS()
+        ? 'Questo iPhone/versione iOS non supporta la registrazione video in-browser. Prova ad aggiornare iOS, oppure esporta da un computer.'
+        : 'Il browser non supporta la registrazione video (MediaRecorder). Prova da Chrome desktop.';
+      exportBtn.disabled = false;
+      return;
+    }
+
+    try{
+      const stream = canvas.captureStream(30);
+      const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8_000_000 });
+      const chunks = [];
+      recorder.ondataavailable = e => { if(e.data.size>0) chunks.push(e.data); };
+
+      const done = new Promise(resolve => { recorder.onstop = resolve; });
+
+      recorder.start();
+      exportStatus.textContent = 'Registrazione in corso…';
+
+      const total = totalDuration();
+      const fps = 30;
+      const frameDur = 1/fps;
+      for(let t=0; t<=total; t+=frameDur){
+        renderFrame(t);
+        await new Promise(r => setTimeout(r, 1000/fps));
+      }
+      renderFrame(total);
+      await new Promise(r => setTimeout(r, 200));
+      recorder.stop();
+      await done;
+
+      const blob = new Blob(chunks, { type: mime.split(';')[0] });
+      const url = URL.createObjectURL(blob);
+
+      previewVideo.src = url;
+      previewVideo.style.display = 'block';
+      saveNote.style.display = 'block';
+
+      downloadLink.href = url;
+      const ext = mime.includes('mp4') ? 'mp4' : 'webm';
+      downloadLink.download = `reel-fwdstudio.${ext}`;
+      downloadLink.style.display = 'inline-block';
+      exportStatus.className = 'status ok';
+      exportStatus.textContent = `Video pronto (${ext.toUpperCase()}).`;
+    }catch(err){
+      exportStatus.className = 'status err';
+      exportStatus.textContent = 'Errore durante l\'esportazione: ' + err.message;
+    }finally{
+      exportBtn.disabled = false;
+    }
+  });
+
+  // init
+  renderOverlays();
+  renderFrame(0);
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(err => {
+        console.warn('Service worker non registrato:', err);
+      });
+    });
+  }
+})();
+</script>
+</body>
+</html>
