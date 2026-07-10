@@ -146,6 +146,11 @@
     background: var(--bg); color: var(--text); border:1px solid var(--line);
     border-radius:6px; padding:6px; font-size:0.82rem;
   }
+  .overlay-item input[type=color]{
+    width:100%; height:36px; padding:2px; border:1px solid var(--line);
+    border-radius:6px; background: var(--bg);
+  }
+  .overlay-item input[type=range]{ width:100%; }
 
   /* Export */
   .status{ font-size: 0.82rem; color: var(--muted); margin-top: 8px; min-height: 18px; }
@@ -409,7 +414,17 @@
 
   // ---------- Text overlays ----------
   document.getElementById('addTextBtn').addEventListener('click', ()=>{
-    texts.push({ id: nextId++, text: 'Il tuo testo qui', start: 0, end: Math.min(2, totalDuration()||2), position: 'bottom' });
+    texts.push({
+      id: nextId++,
+      text: 'Il tuo testo qui',
+      start: 0,
+      end: Math.min(2, totalDuration()||2),
+      position: 'bottom',
+      fontFamily: 'system',
+      fontSize: 56,
+      color: '#ffffff',
+      bgOpacity: 0.45
+    });
     renderOverlays();
   });
 
@@ -442,15 +457,45 @@
             </select>
           </div>
         </div>
+        <div class="row">
+          <div>
+            <label>Font</label>
+            <select data-role="fontFamily">
+              <option value="system">Sistema (sans)</option>
+              <option value="serif">Serif</option>
+              <option value="mono">Monospace</option>
+              <option value="condensed">Condensed / impatto</option>
+            </select>
+          </div>
+          <div>
+            <label>Dimensione</label>
+            <input type="range" data-role="fontSize" min="32" max="90" step="2" value="${t.fontSize}">
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>Colore testo</label>
+            <input type="color" data-role="color" value="${t.color}">
+          </div>
+          <div>
+            <label>Sfondo</label>
+            <input type="range" data-role="bgOpacity" min="0" max="0.9" step="0.05" value="${t.bgOpacity}">
+          </div>
+        </div>
         <div class="btn-row">
           <button class="btn danger" data-action="del">Rimuovi</button>
         </div>
       `;
       el.querySelector('[data-role=position]').value = t.position;
+      el.querySelector('[data-role=fontFamily]').value = t.fontFamily;
       el.querySelector('[data-role=text]').addEventListener('input', e=>{ t.text = e.target.value; renderFrame(scrubTime); });
       el.querySelector('[data-role=start]').addEventListener('input', e=>{ t.start = parseFloat(e.target.value)||0; renderFrame(scrubTime); });
       el.querySelector('[data-role=end]').addEventListener('input', e=>{ t.end = parseFloat(e.target.value)||0; renderFrame(scrubTime); });
       el.querySelector('[data-role=position]').addEventListener('change', e=>{ t.position = e.target.value; renderFrame(scrubTime); });
+      el.querySelector('[data-role=fontFamily]').addEventListener('change', e=>{ t.fontFamily = e.target.value; renderFrame(scrubTime); });
+      el.querySelector('[data-role=fontSize]').addEventListener('input', e=>{ t.fontSize = parseFloat(e.target.value); renderFrame(scrubTime); });
+      el.querySelector('[data-role=color]').addEventListener('input', e=>{ t.color = e.target.value; renderFrame(scrubTime); });
+      el.querySelector('[data-role=bgOpacity]').addEventListener('input', e=>{ t.bgOpacity = parseFloat(e.target.value); renderFrame(scrubTime); });
       el.querySelector('[data-action=del]').addEventListener('click', ()=>{ texts.splice(i,1); renderOverlays(); renderFrame(scrubTime); });
       overlayList.appendChild(el);
     });
@@ -500,32 +545,45 @@
     ctx.drawImage(im.img, x, y, w, h);
   }
 
+  const FONT_STACKS = {
+    system: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    serif: 'Georgia, "Times New Roman", serif',
+    mono: '"SF Mono", ui-monospace, Menlo, monospace',
+    condensed: '"Arial Narrow", "Helvetica Neue Condensed", sans-serif'
+  };
+
   function drawTextOverlays(time){
     texts.forEach(t => {
       if(time < t.start || time > t.end) return;
       ctx.save();
-      ctx.font = '700 56px -apple-system, sans-serif';
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      const stack = FONT_STACKS[t.fontFamily] || FONT_STACKS.system;
+      const fontSize = t.fontSize || 56;
+      ctx.font = `700 ${fontSize}px ${stack}`;
       ctx.textAlign = 'center';
-      const lines = wrapText(t.text, CANVAS_W - 120, 56);
-      const lineHeight = 68;
+      const lines = wrapText(t.text, CANVAS_W - 120, fontSize, stack);
+      const lineHeight = fontSize * 1.2;
       const blockH = lines.length * lineHeight + 40;
       let yTop;
       if(t.position === 'top') yTop = 100;
       else if(t.position === 'center') yTop = (CANVAS_H - blockH)/2;
       else yTop = CANVAS_H - blockH - 140;
 
-      ctx.fillRect(60, yTop, CANVAS_W-120, blockH);
-      ctx.fillStyle = '#fff';
+      const bgOpacity = t.bgOpacity ?? 0.45;
+      if(bgOpacity > 0){
+        ctx.fillStyle = `rgba(0,0,0,${bgOpacity})`;
+        ctx.fillRect(60, yTop, CANVAS_W-120, blockH);
+      }
+      ctx.fillStyle = t.color || '#ffffff';
+      ctx.font = `700 ${fontSize}px ${stack}`;
       lines.forEach((line, i) => {
-        ctx.fillText(line, CANVAS_W/2, yTop + 50 + i*lineHeight);
+        ctx.fillText(line, CANVAS_W/2, yTop + fontSize*0.9 + i*lineHeight);
       });
       ctx.restore();
     });
   }
 
-  function wrapText(text, maxWidth, fontSize){
-    ctx.font = `700 ${fontSize}px -apple-system, sans-serif`;
+  function wrapText(text, maxWidth, fontSize, stack){
+    ctx.font = `700 ${fontSize}px ${stack}`;
     const words = text.split(/\s+/);
     const lines = [];
     let cur = '';
