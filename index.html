@@ -874,6 +874,14 @@
     drawTextOverlays(time);
     drawWatermark();
 
+    // TEMP DEBUG — rimuoveremo questo dopo aver capito il problema
+    ctx.save();
+    ctx.font = '600 26px monospace';
+    ctx.fillStyle = '#00ff00';
+    ctx.textAlign = 'left';
+    ctx.fillText(`DEBUG filtro=${currentFilter} vig=${vignette.enabled}/${vignette.intensity}`, 20, 40);
+    ctx.restore();
+
     timecodeEl.textContent = `${time.toFixed(1)}s / ${total.toFixed(1)}s`;
     scrubber.value = String(Math.round(time*100));
   }
