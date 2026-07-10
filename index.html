@@ -860,16 +860,14 @@
     const next = images[idx+1];
     const inTransitionWindow = next && im.transition !== 'cut' && localTime > im.duration - CROSSFADE;
 
-    ctx.save();
-    ctx.filter = FILTER_CSS[currentFilter] || 'none';
     if(inTransitionWindow){
       const t = (localTime - (im.duration - CROSSFADE)) / CROSSFADE;
       drawTransition(im, next, progress, t, im.transition);
     } else {
       drawImageWithEffect(im, progress);
     }
-    ctx.restore();
 
+    applyColorFilter();
     drawVignette();
     drawTextOverlays(time);
     drawWatermark();
@@ -971,17 +969,86 @@
     vintage: 'sepia(30%) contrast(110%) saturate(85%) brightness(95%)'
   };
 
+  function clamp255(v){ return v < 0 ? 0 : (v > 255 ? 255 : v); }
+
+  // Manual pixel-based color filters. ctx.filter (CSS filters on Canvas2D)
+  // is not reliably supported on every mobile browser, so we do the math
+  // ourselves on the raw pixel data — slower, but works everywhere.
+  function applyColorFilter(){
+    if(currentFilter === 'none') return;
+    let imgData;
+    try{
+      imgData = ctx.getImageData(0, 0, CANVAS_W, CANVAS_H);
+    }catch(e){
+      return; // canvas tainted or unsupported — silently skip
+    }
+    const d = imgData.data;
+    for(let i=0; i<d.length; i+=4){
+      let r = d[i], g = d[i+1], b = d[i+2];
+      switch(currentFilter){
+        case 'bw': {
+          const gray = 0.299*r + 0.587*g + 0.114*b;
+          r = g = b = gray;
+          break;
+        }
+        case 'sepia': {
+          const tr = 0.393*r + 0.769*g + 0.189*b;
+          const tg = 0.349*r + 0.686*g + 0.168*b;
+          const tb = 0.272*r + 0.534*g + 0.131*b;
+          r = tr; g = tg; b = tb;
+          break;
+        }
+        case 'contrast': {
+          const c = 1.3;
+          r = (r-128)*c + 128;
+          g = (g-128)*c + 128;
+          b = (b-128)*c + 128;
+          break;
+        }
+        case 'vintage': {
+          const tr = 0.393*r + 0.769*g + 0.189*b;
+          const tg = 0.349*r + 0.686*g + 0.168*b;
+          const tb = 0.272*r + 0.534*g + 0.131*b;
+          r = tr*0.92; g = tg*0.9; b = tb*0.82;
+          break;
+        }
+      }
+      d[i] = clamp255(r); d[i+1] = clamp255(g); d[i+2] = clamp255(b);
+    }
+    ctx.putImageData(imgData, 0, 0);
+  }
+
   function drawVignette(){
     if(!vignette.enabled) return;
-    const grad = ctx.createRadialGradient(
-      CANVAS_W/2, CANVAS_H/2, CANVAS_H*0.32,
-      CANVAS_W/2, CANVAS_H/2, CANVAS_H*0.72
-    );
-    grad.addColorStop(0, 'rgba(0,0,0,0)');
-    grad.addColorStop(1, `rgba(0,0,0,${vignette.intensity})`);
+    const inten = vignette.intensity;
     ctx.save();
-    ctx.fillStyle = grad;
-    ctx.fillRect(0,0,CANVAS_W,CANVAS_H);
+
+    const edgeV = CANVAS_H * 0.30;
+    let g = ctx.createLinearGradient(0, 0, 0, edgeV);
+    g.addColorStop(0, `rgba(0,0,0,${inten})`);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, CANVAS_W, edgeV);
+
+    g = ctx.createLinearGradient(0, CANVAS_H, 0, CANVAS_H - edgeV);
+    g.addColorStop(0, `rgba(0,0,0,${inten})`);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, CANVAS_H - edgeV, CANVAS_W, edgeV);
+
+    const edgeH = CANVAS_W * 0.30;
+    g = ctx.createLinearGradient(0, 0, edgeH, 0);
+    g.addColorStop(0, `rgba(0,0,0,${inten})`);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, edgeH, CANVAS_H);
+
+    g = ctx.createLinearGradient(CANVAS_W, 0, CANVAS_W - edgeH, 0);
+    g.addColorStop(0, `rgba(0,0,0,${inten})`);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(CANVAS_W - edgeH, 0, edgeH, CANVAS_H);
+
     ctx.restore();
   }
 
