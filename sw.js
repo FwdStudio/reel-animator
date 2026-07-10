@@ -1,4 +1,4 @@
-const CACHE_NAME = 'reel-animator-v1';
+const CACHE_NAME = 'reel-animator-v2';
 const ASSETS = [
   './index.html',
   './manifest.json',
@@ -22,13 +22,18 @@ self.addEventListener('activate', event => {
   self.clients.claim();
 });
 
-// Cache-first for app shell, network fallback for anything else.
+// Network-first: always try to fetch the latest version when online,
+// so updates to index.html show up immediately. Only fall back to the
+// cache when offline (or the network request fails).
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   event.respondWith(
-    caches.match(event.request).then(cached => {
-      if (cached) return cached;
-      return fetch(event.request).catch(() => cached);
-    })
+    fetch(event.request)
+      .then(response => {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
