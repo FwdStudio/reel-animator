@@ -457,6 +457,10 @@
               <option value="zoom-in-pan-right">Zoom in + pan destra</option>
               <option value="zoom-out-pan-left">Zoom out + pan sinistra</option>
               <option value="zoom-out-pan-right">Zoom out + pan destra</option>
+              <option value="breathing">Respiro (pulsazione)</option>
+              <option value="drift">Deriva diagonale lenta</option>
+              <option value="rotate-in">Rotazione + zoom in</option>
+              <option value="rotate-out">Rotazione + zoom out</option>
               <option value="static">Statico</option>
             </select>
           </div>
@@ -623,7 +627,7 @@
     const base = coverRect(im.img.naturalWidth, im.img.naturalHeight, CANVAS_W, CANVAS_H);
     // Extra zoom headroom so pans don't reveal edges
     const zoomRange = 0.18;
-    let scale = 1, dx = 0, dy = 0;
+    let scale = 1, dx = 0, dy = 0, rotationDeg = 0;
     const t = progress;
     switch(im.effect){
       case 'zoom-in':
@@ -646,13 +650,38 @@
         scale = 1 + zoomRange * (1-t); dx = (0.5 - t) * base.w * (zoomRange*0.6); break;
       case 'zoom-out-pan-right':
         scale = 1 + zoomRange * (1-t); dx = (t - 0.5) * base.w * (zoomRange*0.6); break;
+      case 'breathing':
+        scale = 1 + zoomRange*0.5 + zoomRange*0.4*Math.sin(t*Math.PI*3); break;
+      case 'drift':
+        scale = 1 + zoomRange;
+        dx = (0.5 - t) * base.w * zoomRange * 0.5;
+        dy = (t - 0.5) * base.h * zoomRange * 0.5;
+        break;
+      case 'rotate-in':
+        scale = 1 + zoomRange * t;
+        rotationDeg = -3 + 3*t;
+        break;
+      case 'rotate-out':
+        scale = 1 + zoomRange * (1-t);
+        rotationDeg = 3*t;
+        break;
       default:
         scale = 1;
     }
     const w = base.w * scale, h = base.h * scale;
     const x = base.x - (w-base.w)/2 + dx;
     const y = base.y - (h-base.h)/2 + dy;
-    ctx.drawImage(im.img, x, y, w, h);
+
+    if(rotationDeg !== 0){
+      ctx.save();
+      ctx.translate(CANVAS_W/2, CANVAS_H/2);
+      ctx.rotate(rotationDeg * Math.PI/180);
+      ctx.translate(-CANVAS_W/2, -CANVAS_H/2);
+      ctx.drawImage(im.img, x, y, w, h);
+      ctx.restore();
+    } else {
+      ctx.drawImage(im.img, x, y, w, h);
+    }
   }
 
   const FONT_STACKS = {
