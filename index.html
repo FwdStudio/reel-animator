@@ -249,6 +249,21 @@
 
   <div class="card" id="voiceCard" style="display:none;">
     <h2>6 · Voce (voiceover)</h2>
+
+    <div style="margin-bottom:12px;">
+      <label style="font-size:0.72rem; color:var(--muted); display:block; margin-bottom:4px;">Testo da leggere (gobbo)</label>
+      <textarea id="voiceScript" placeholder="Scrivi o incolla qui il testo da leggere durante la registrazione…"
+        style="width:100%; min-height:90px; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:10px; font-size:0.9rem;"></textarea>
+      <div class="row" style="display:flex; gap:8px; align-items:center; margin-top:6px;">
+        <label style="font-size:0.72rem; color:var(--muted); flex-shrink:0;">Velocità scorrimento</label>
+        <input type="range" id="teleprompterSpeed" min="10" max="80" step="5" value="30" style="flex:1;">
+      </div>
+    </div>
+
+    <div id="teleprompterView" style="display:none; background:#000; border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:12px; height:180px; overflow:hidden; position:relative;">
+      <div id="teleprompterText" style="font-size:1.3rem; line-height:1.6; color:#fff; white-space:pre-wrap; position:relative;"></div>
+    </div>
+
     <div id="voiceEmpty" class="empty" style="padding:0 0 10px;">Nessuna registrazione</div>
     <div class="btn-row" style="margin-bottom:10px;">
       <button class="btn secondary" id="voiceRecordBtn">🎙️ Registra voce</button>
@@ -427,6 +442,10 @@
   const voiceEcho = document.getElementById('voiceEcho');
   const voiceApplyBtn = document.getElementById('voiceApplyBtn');
   const voiceRemoveBtn = document.getElementById('voiceRemoveBtn');
+  const voiceScript = document.getElementById('voiceScript');
+  const teleprompterSpeed = document.getElementById('teleprompterSpeed');
+  const teleprompterView = document.getElementById('teleprompterView');
+  const teleprompterText = document.getElementById('teleprompterText');
   const styleCard = document.getElementById('styleCard');
   const filterSelect = document.getElementById('filterSelect');
   const vignetteEnabled = document.getElementById('vignetteEnabled');
@@ -1162,6 +1181,34 @@
     await tempCtx.close();
   }
 
+  let teleprompterRAF = null;
+
+  function startTeleprompter(){
+    const text = voiceScript.value.trim();
+    if(!text) return;
+    teleprompterText.textContent = text;
+    teleprompterText.style.top = '0px';
+    teleprompterView.style.display = 'block';
+    let pos = 0;
+    let lastTs = null;
+    function step(ts){
+      if(lastTs === null) lastTs = ts;
+      const dt = (ts - lastTs) / 1000;
+      lastTs = ts;
+      const speed = parseFloat(teleprompterSpeed.value) || 30; // px/sec
+      pos += speed * dt;
+      teleprompterText.style.top = `-${pos}px`;
+      teleprompterRAF = requestAnimationFrame(step);
+    }
+    teleprompterRAF = requestAnimationFrame(step);
+  }
+
+  function stopTeleprompter(){
+    if(teleprompterRAF) cancelAnimationFrame(teleprompterRAF);
+    teleprompterRAF = null;
+    teleprompterView.style.display = 'none';
+  }
+
   async function startVoiceRecording(){
     try{
       voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1212,6 +1259,7 @@
     voiceMediaRecorder.start();
     voiceRecording = true;
     voiceRecordBtn.textContent = '⏹ Ferma registrazione';
+    startTeleprompter();
   }
 
   function stopVoiceRecording(){
@@ -1220,6 +1268,7 @@
     }
     voiceRecording = false;
     voiceRecordBtn.textContent = '🎙️ Registra voce';
+    stopTeleprompter();
   }
 
   voiceRecordBtn.addEventListener('click', () => {
@@ -1576,6 +1625,7 @@
     if(music){ music.audioEl.pause(); music = null; }
     if(voice){ voice.audioEl.pause(); voice = null; }
     if(voiceRecording) stopVoiceRecording();
+    stopTeleprompter();
 
     images = [];
     texts = [];
@@ -1601,6 +1651,7 @@
     voiceControls.style.display = 'none';
     voicePreviewPlayer.src = '';
     voiceRecordBtn.textContent = '🎙️ Registra voce';
+    voiceScript.value = '';
 
     playBtn.textContent = '▶︎ Play';
     downloadLink.style.display = 'none';
