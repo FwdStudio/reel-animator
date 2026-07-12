@@ -247,8 +247,59 @@
     <div class="note">Carica un brano dalla tua libreria (assicurati di averne i diritti d'uso). Durante l'export, se il browser lo supporta, la musica viene inclusa nel video; altrimenti solo il video verrà esportato.</div>
   </div>
 
+  <div class="card" id="voiceCard" style="display:none;">
+    <h2>6 · Voce (voiceover)</h2>
+    <div id="voiceEmpty" class="empty" style="padding:0 0 10px;">Nessuna registrazione</div>
+    <div class="btn-row" style="margin-bottom:10px;">
+      <button class="btn secondary" id="voiceRecordBtn">🎙️ Registra voce</button>
+    </div>
+    <div id="voiceControls" style="display:none;">
+      <audio id="voicePreviewPlayer" controls style="width:100%; margin-bottom:10px;"></audio>
+      <div class="row" style="display:flex; gap:8px; margin-bottom:8px;">
+        <div style="flex:1;">
+          <label style="font-size:0.72rem; color:var(--muted);">Taglio inizio (s)</label>
+          <input type="number" id="voiceTrimStart" min="0" step="0.1" value="0" style="width:100%; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px;">
+        </div>
+        <div style="flex:1;">
+          <label style="font-size:0.72rem; color:var(--muted);">Taglio fine (s)</label>
+          <input type="number" id="voiceTrimEnd" min="0" step="0.1" value="0" style="width:100%; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px;">
+        </div>
+      </div>
+      <div style="margin-bottom:8px;">
+        <label style="font-size:0.72rem; color:var(--muted);">Volume (guadagno)</label>
+        <input type="range" id="voiceGain" min="0" max="2" step="0.05" value="1" style="width:100%;">
+      </div>
+      <div style="margin-bottom:8px;">
+        <label style="font-size:0.72rem; color:var(--muted);">Tono (pitch): <span id="voicePitchLabel">Normale</span></label>
+        <input type="range" id="voicePitch" min="-12" max="12" step="1" value="0" style="width:100%;">
+      </div>
+      <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:10px;">
+        <label style="display:flex; align-items:center; gap:8px; font-size:0.85rem;">
+          <input type="checkbox" id="voiceNormalize"> Normalizza livello automaticamente
+        </label>
+        <label style="display:flex; align-items:center; gap:8px; font-size:0.85rem;">
+          <input type="checkbox" id="voiceFadeIn"> Dissolvenza in ingresso
+        </label>
+        <label style="display:flex; align-items:center; gap:8px; font-size:0.85rem;">
+          <input type="checkbox" id="voiceFadeOut"> Dissolvenza in uscita
+        </label>
+        <label style="display:flex; align-items:center; gap:8px; font-size:0.85rem;">
+          <input type="checkbox" id="voiceRobot"> Voce robot (effetto metallico)
+        </label>
+        <label style="display:flex; align-items:center; gap:8px; font-size:0.85rem;">
+          <input type="checkbox" id="voiceEcho"> Eco
+        </label>
+      </div>
+      <div class="btn-row">
+        <button class="btn secondary" id="voiceApplyBtn">Applica modifiche</button>
+        <button class="btn danger" id="voiceRemoveBtn">Elimina</button>
+      </div>
+    </div>
+    <div class="note">La registrazione resta sul telefono, non viene inviata da nessuna parte. Viene mixata nell'export insieme alla musica, quando il browser lo supporta.</div>
+  </div>
+
   <div class="card" id="styleCard" style="display:none;">
-    <h2>6 · Stile</h2>
+    <h2>7 · Stile</h2>
 
     <div style="margin-bottom:14px;">
       <label style="font-size:0.72rem; color:var(--muted); display:block; margin-bottom:4px;">Filtro colore</label>
@@ -292,7 +343,7 @@
   </div>
 
   <div class="card" id="exportCard" style="display:none;">
-    <h2>7 · Esporta</h2>
+    <h2>8 · Esporta</h2>
     <div class="btn-row">
       <button class="btn" id="exportBtn">Genera video</button>
     </div>
@@ -329,6 +380,11 @@
   let rafHandle = null;
 
   let music = null; // { name, audioEl, volume, offset }
+  let voice = null; // { rawBuffer, audioEl, trimStart, trimEnd, gain, normalize, fadeIn, fadeOut, duration }
+  let voiceRecording = false;
+  let voiceMediaRecorder = null;
+  let voiceChunks = [];
+  let voiceStream = null;
 
   let currentFilter = 'none';
   let vignette = { enabled: false, intensity: 0.5 };
@@ -354,6 +410,23 @@
   const audioVolume = document.getElementById('audioVolume');
   const audioOffset = document.getElementById('audioOffset');
   const audioRemoveBtn = document.getElementById('audioRemoveBtn');
+  const voiceCard = document.getElementById('voiceCard');
+  const voiceEmpty = document.getElementById('voiceEmpty');
+  const voiceRecordBtn = document.getElementById('voiceRecordBtn');
+  const voiceControls = document.getElementById('voiceControls');
+  const voicePreviewPlayer = document.getElementById('voicePreviewPlayer');
+  const voiceTrimStart = document.getElementById('voiceTrimStart');
+  const voiceTrimEnd = document.getElementById('voiceTrimEnd');
+  const voiceGain = document.getElementById('voiceGain');
+  const voicePitch = document.getElementById('voicePitch');
+  const voicePitchLabel = document.getElementById('voicePitchLabel');
+  const voiceNormalize = document.getElementById('voiceNormalize');
+  const voiceFadeIn = document.getElementById('voiceFadeIn');
+  const voiceFadeOut = document.getElementById('voiceFadeOut');
+  const voiceRobot = document.getElementById('voiceRobot');
+  const voiceEcho = document.getElementById('voiceEcho');
+  const voiceApplyBtn = document.getElementById('voiceApplyBtn');
+  const voiceRemoveBtn = document.getElementById('voiceRemoveBtn');
   const styleCard = document.getElementById('styleCard');
   const filterSelect = document.getElementById('filterSelect');
   const vignetteEnabled = document.getElementById('vignetteEnabled');
@@ -378,6 +451,7 @@
     previewCard.style.display = has ? '' : 'none';
     textCard.style.display = has ? '' : 'none';
     audioCard.style.display = has ? '' : 'none';
+    voiceCard.style.display = has ? '' : 'none';
     styleCard.style.display = has ? '' : 'none';
     exportCard.style.display = has ? '' : 'none';
   }
@@ -919,6 +993,270 @@
     }catch(e){ /* not ready yet */ }
   }
 
+  // ---------- Voice recording & editing ----------
+  function writeWavString(view, offset, str){
+    for(let i=0;i<str.length;i++) view.setUint8(offset+i, str.charCodeAt(i));
+  }
+
+  function floatTo16BitPCM(view, offset, input){
+    for(let i=0;i<input.length;i++, offset+=2){
+      const s = Math.max(-1, Math.min(1, input[i]));
+      view.setInt16(offset, s<0 ? s*0x8000 : s*0x7FFF, true);
+    }
+  }
+
+  function interleaveChannels(channelArrays){
+    if(channelArrays.length === 1) return channelArrays[0];
+    const len = channelArrays[0].length;
+    const result = new Float32Array(len * channelArrays.length);
+    for(let i=0;i<len;i++){
+      for(let c=0;c<channelArrays.length;c++){
+        result[i*channelArrays.length + c] = channelArrays[c][i];
+      }
+    }
+    return result;
+  }
+
+  function audioBufferToWav(buffer){
+    const numChannels = buffer.numberOfChannels;
+    const sampleRate = buffer.sampleRate;
+    const channelArrays = [];
+    for(let c=0;c<numChannels;c++) channelArrays.push(buffer.getChannelData(c));
+    const samples = interleaveChannels(channelArrays);
+    const bytesPerSample = 2;
+    const blockAlign = numChannels * bytesPerSample;
+    const dataSize = samples.length * bytesPerSample;
+    const arrBuffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(arrBuffer);
+    writeWavString(view, 0, 'RIFF');
+    view.setUint32(4, 36 + dataSize, true);
+    writeWavString(view, 8, 'WAVE');
+    writeWavString(view, 12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * blockAlign, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, 16, true);
+    writeWavString(view, 36, 'data');
+    view.setUint32(40, dataSize, true);
+    floatTo16BitPCM(view, 44, samples);
+    return new Blob([view], { type: 'audio/wav' });
+  }
+
+  function pitchShiftChannel(inputArr, ratio){
+    if(ratio === 1) return inputArr;
+    const outLen = Math.max(1, Math.floor(inputArr.length / ratio));
+    const out = new Float32Array(outLen);
+    for(let i=0;i<outLen;i++){
+      const srcPos = i * ratio;
+      const i0 = Math.floor(srcPos);
+      const frac = srcPos - i0;
+      const s0 = inputArr[i0] || 0;
+      const s1 = inputArr[i0+1] !== undefined ? inputArr[i0+1] : s0;
+      out[i] = s0 + (s1 - s0) * frac;
+    }
+    return out;
+  }
+
+  function ringModulateChannel(arr, sampleRate, freq){
+    const out = new Float32Array(arr.length);
+    for(let i=0;i<arr.length;i++){
+      const t = i / sampleRate;
+      out[i] = arr[i] * Math.sin(2*Math.PI*freq*t);
+    }
+    return out;
+  }
+
+  function echoChannel(arr, sampleRate, delaySec, feedback){
+    const delaySamples = Math.max(1, Math.floor(delaySec * sampleRate));
+    const out = new Float32Array(arr.length);
+    for(let i=0;i<arr.length;i++){
+      let s = arr[i];
+      if(i >= delaySamples) s += out[i-delaySamples] * feedback;
+      out[i] = s;
+    }
+    return out;
+  }
+
+  async function reprocessVoice(){
+    if(!voice || !voice.rawBuffer) return;
+    const raw = voice.rawBuffer;
+    const sr = raw.sampleRate;
+    const chs = raw.numberOfChannels;
+    const trimStart = Math.max(0, voice.trimStart || 0);
+    const trimEndVal = (voice.trimEnd && voice.trimEnd > trimStart) ? voice.trimEnd : raw.duration;
+    const startSample = Math.floor(trimStart * sr);
+    const endSample = Math.min(raw.length, Math.floor(trimEndVal * sr));
+    const len = Math.max(1, endSample - startSample);
+
+    const channelArrays = [];
+    for(let c=0;c<chs;c++){
+      const src = raw.getChannelData(c).subarray(startSample, endSample);
+      channelArrays.push(new Float32Array(src));
+    }
+
+    // Pitch shift (simple resampling — also changes duration, like tape speed)
+    const semitones = voice.pitch || 0;
+    let workingArrays = channelArrays;
+    let workingLen = len;
+    if(semitones !== 0){
+      const ratio = Math.pow(2, semitones/12);
+      workingArrays = channelArrays.map(arr => pitchShiftChannel(arr, ratio));
+      workingLen = workingArrays[0].length;
+    }
+
+    // Robot (ring modulation)
+    if(voice.robot){
+      workingArrays = workingArrays.map(arr => ringModulateChannel(arr, sr, 35));
+    }
+
+    // Echo
+    if(voice.echo){
+      workingArrays = workingArrays.map(arr => echoChannel(arr, sr, 0.22, 0.35));
+    }
+
+    const finalArrays = workingArrays;
+    const finalLen = workingLen;
+
+    if(voice.normalize){
+      let peak = 0;
+      finalArrays.forEach(arr => { for(let i=0;i<arr.length;i++) peak = Math.max(peak, Math.abs(arr[i])); });
+      if(peak > 0.0001){
+        const scale = 0.95/peak;
+        finalArrays.forEach(arr => { for(let i=0;i<arr.length;i++) arr[i] *= scale; });
+      }
+    }
+
+    const gain = voice.gain || 1;
+    if(gain !== 1){
+      finalArrays.forEach(arr => { for(let i=0;i<arr.length;i++) arr[i] *= gain; });
+    }
+
+    const fadeSamples = Math.floor(0.3 * sr);
+    if(voice.fadeIn){
+      finalArrays.forEach(arr => {
+        const n = Math.min(fadeSamples, arr.length);
+        for(let i=0;i<n;i++) arr[i] *= i/fadeSamples;
+      });
+    }
+    if(voice.fadeOut){
+      finalArrays.forEach(arr => {
+        const n = Math.min(fadeSamples, arr.length);
+        for(let i=0;i<n;i++) arr[arr.length-1-i] *= i/fadeSamples;
+      });
+    }
+
+    finalArrays.forEach(arr => { for(let i=0;i<arr.length;i++) arr[i] = Math.max(-1, Math.min(1, arr[i])); });
+
+    const tempCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const outBuffer = tempCtx.createBuffer(chs, finalLen, sr);
+    for(let c=0;c<chs;c++) outBuffer.copyToChannel(finalArrays[c], c);
+
+    const wavBlob = audioBufferToWav(outBuffer);
+    const url = URL.createObjectURL(wavBlob);
+    voice.audioEl.src = url;
+    voicePreviewPlayer.src = url;
+    voice.duration = outBuffer.duration;
+    await tempCtx.close();
+  }
+
+  async function startVoiceRecording(){
+    try{
+      voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    }catch(e){
+      alert('Permesso microfono negato o non disponibile su questo browser.');
+      return;
+    }
+    voiceChunks = [];
+    const mimeCandidate = ['audio/mp4','audio/webm'].find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m));
+    voiceMediaRecorder = mimeCandidate
+      ? new MediaRecorder(voiceStream, { mimeType: mimeCandidate })
+      : new MediaRecorder(voiceStream);
+
+    voiceMediaRecorder.ondataavailable = e => { if(e.data.size>0) voiceChunks.push(e.data); };
+    voiceMediaRecorder.onstop = async () => {
+      voiceStream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(voiceChunks, { type: voiceMediaRecorder.mimeType || 'audio/mp4' });
+      const arrBuf = await blob.arrayBuffer();
+      const tempCtx = new (window.AudioContext || window.webkitAudioContext)();
+      try{
+        const decoded = await tempCtx.decodeAudioData(arrBuf);
+        const audioEl = new Audio();
+        voice = {
+          rawBuffer: decoded, audioEl,
+          trimStart: 0, trimEnd: decoded.duration,
+          gain: 1, pitch: 0, robot: false, echo: false,
+          normalize: false, fadeIn: false, fadeOut: false,
+          duration: decoded.duration
+        };
+        voiceTrimStart.value = '0';
+        voiceTrimEnd.value = decoded.duration.toFixed(1);
+        voiceGain.value = '1';
+        voicePitch.value = '0';
+        voicePitchLabel.textContent = 'Normale';
+        voiceNormalize.checked = false;
+        voiceFadeIn.checked = false;
+        voiceFadeOut.checked = false;
+        voiceRobot.checked = false;
+        voiceEcho.checked = false;
+        await reprocessVoice();
+        voiceEmpty.style.display = 'none';
+        voiceControls.style.display = '';
+      }catch(err){
+        alert('Impossibile elaborare la registrazione: ' + err.message);
+      }
+      await tempCtx.close();
+    };
+    voiceMediaRecorder.start();
+    voiceRecording = true;
+    voiceRecordBtn.textContent = '⏹ Ferma registrazione';
+  }
+
+  function stopVoiceRecording(){
+    if(voiceMediaRecorder && voiceMediaRecorder.state !== 'inactive'){
+      voiceMediaRecorder.stop();
+    }
+    voiceRecording = false;
+    voiceRecordBtn.textContent = '🎙️ Registra voce';
+  }
+
+  voiceRecordBtn.addEventListener('click', () => {
+    if(!voiceRecording) startVoiceRecording(); else stopVoiceRecording();
+  });
+
+  voicePitch.addEventListener('input', () => {
+    const v = parseInt(voicePitch.value, 10);
+    voicePitchLabel.textContent = v === 0 ? 'Normale' : (v > 0 ? `+${v} (più acuta)` : `${v} (più grave)`);
+  });
+
+  voiceApplyBtn.addEventListener('click', async () => {
+    if(!voice) return;
+    voice.trimStart = Math.max(0, parseFloat(voiceTrimStart.value) || 0);
+    voice.trimEnd = parseFloat(voiceTrimEnd.value) || voice.rawBuffer.duration;
+    voice.gain = parseFloat(voiceGain.value) || 1;
+    voice.pitch = parseInt(voicePitch.value, 10) || 0;
+    voice.normalize = voiceNormalize.checked;
+    voice.fadeIn = voiceFadeIn.checked;
+    voice.fadeOut = voiceFadeOut.checked;
+    voice.robot = voiceRobot.checked;
+    voice.echo = voiceEcho.checked;
+    voiceApplyBtn.textContent = 'Elaborazione…';
+    voiceApplyBtn.disabled = true;
+    await reprocessVoice();
+    voiceApplyBtn.textContent = 'Applica modifiche';
+    voiceApplyBtn.disabled = false;
+  });
+
+  voiceRemoveBtn.addEventListener('click', () => {
+    if(voice){ voice.audioEl.pause(); }
+    voice = null;
+    voiceEmpty.style.display = '';
+    voiceControls.style.display = 'none';
+    voicePreviewPlayer.src = '';
+  });
+
   // ---------- Style controls ----------
   filterSelect.addEventListener('change', e => {
     currentFilter = e.target.value;
@@ -1071,10 +1409,12 @@
       if(scrubTime >= totalDuration()) scrubTime = 0;
       playStart = performance.now() - scrubTime*1000;
       if(music){ syncAudioToTime(scrubTime); music.audioEl.play().catch(()=>{}); }
+      if(voice){ try{ voice.audioEl.currentTime = scrubTime; }catch(e){} voice.audioEl.play().catch(()=>{}); }
       tick();
     } else if(rafHandle){
       cancelAnimationFrame(rafHandle);
       if(music) music.audioEl.pause();
+      if(voice) voice.audioEl.pause();
     }
   });
 
@@ -1086,6 +1426,7 @@
       scrubTime = totalDuration();
       renderFrame(scrubTime);
       if(music) music.audioEl.pause();
+      if(voice) voice.audioEl.pause();
       return;
     }
     scrubTime = t;
@@ -1097,6 +1438,7 @@
     playing = false; playBtn.textContent = '▶︎ Play';
     scrubTime = parseInt(scrubber.value,10)/100;
     if(music) music.audioEl.pause();
+    if(voice) voice.audioEl.pause();
     renderFrame(scrubTime);
   });
 
@@ -1138,23 +1480,35 @@
       let audioCtx = null;
       let includesAudio = false;
 
-      if(music){
+      if(music || voice){
         try{
           audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-          const source = audioCtx.createMediaElementSource(music.audioEl);
-          const gain = audioCtx.createGain();
-          gain.gain.value = music.volume;
           const dest = audioCtx.createMediaStreamDestination();
-          source.connect(gain);
-          gain.connect(dest);
-          gain.connect(audioCtx.destination); // so you can hear it while it exports too
+
+          if(music){
+            const musicSource = audioCtx.createMediaElementSource(music.audioEl);
+            const musicGain = audioCtx.createGain();
+            musicGain.gain.value = music.volume;
+            musicSource.connect(musicGain);
+            musicGain.connect(dest);
+            musicGain.connect(audioCtx.destination);
+          }
+          if(voice){
+            const voiceSource = audioCtx.createMediaElementSource(voice.audioEl);
+            const voiceGainNode = audioCtx.createGain();
+            voiceGainNode.gain.value = 1; // already gain-adjusted when the WAV was rendered
+            voiceSource.connect(voiceGainNode);
+            voiceGainNode.connect(dest);
+            voiceGainNode.connect(audioCtx.destination);
+          }
+
           const audioTrack = dest.stream.getAudioTracks()[0];
           if(audioTrack){
             combinedStream = new MediaStream([...canvasStream.getVideoTracks(), audioTrack]);
             includesAudio = true;
           }
         }catch(audioErr){
-          console.warn('Musica non inclusa nell\'export (non supportata su questo browser):', audioErr);
+          console.warn('Audio non incluso nell\'export (non supportato su questo browser):', audioErr);
           combinedStream = canvasStream;
         }
       }
@@ -1165,9 +1519,9 @@
 
       const done = new Promise(resolve => { recorder.onstop = resolve; });
 
-      if(music && includesAudio){
-        syncAudioToTime(0);
-        music.audioEl.play().catch(()=>{});
+      if(includesAudio){
+        if(music){ syncAudioToTime(0); music.audioEl.play().catch(()=>{}); }
+        if(voice){ try{ voice.audioEl.currentTime = 0; }catch(e){} voice.audioEl.play().catch(()=>{}); }
       }
 
       recorder.start();
@@ -1184,6 +1538,7 @@
       await new Promise(r => setTimeout(r, 200));
       recorder.stop();
       if(music) music.audioEl.pause();
+      if(voice) voice.audioEl.pause();
       if(audioCtx) audioCtx.close().catch(()=>{});
       await done;
 
@@ -1201,7 +1556,7 @@
       exportStatus.className = 'status ok';
       exportStatus.textContent = includesAudio
         ? `Video pronto (${ext.toUpperCase()}) con audio.`
-        : `Video pronto (${ext.toUpperCase()}).` + (music ? ' Nota: la musica non è stata inclusa (non supportata su questo browser).' : '');
+        : `Video pronto (${ext.toUpperCase()}).` + ((music||voice) ? ' Nota: l\'audio non è stato incluso (non supportato su questo browser).' : '');
     }catch(err){
       exportStatus.className = 'status err';
       exportStatus.textContent = 'Errore durante l\'esportazione: ' + err.message;
@@ -1212,13 +1567,15 @@
 
   // ---------- Reset ----------
   document.getElementById('resetBtn').addEventListener('click', () => {
-    if(images.length === 0 && texts.length === 0 && !music) return;
-    const ok = window.confirm('Ricominciare da zero? Foto, testi, musica e stile impostati andranno persi.');
+    if(images.length === 0 && texts.length === 0 && !music && !voice) return;
+    const ok = window.confirm('Ricominciare da zero? Foto, testi, musica, voce e stile impostati andranno persi.');
     if(!ok) return;
 
     playing = false;
     if(rafHandle) cancelAnimationFrame(rafHandle);
     if(music){ music.audioEl.pause(); music = null; }
+    if(voice){ voice.audioEl.pause(); voice = null; }
+    if(voiceRecording) stopVoiceRecording();
 
     images = [];
     texts = [];
@@ -1239,6 +1596,11 @@
 
     audioEmpty.style.display = '';
     audioControls.style.display = 'none';
+
+    voiceEmpty.style.display = '';
+    voiceControls.style.display = 'none';
+    voicePreviewPlayer.src = '';
+    voiceRecordBtn.textContent = '🎙️ Registra voce';
 
     playBtn.textContent = '▶︎ Play';
     downloadLink.style.display = 'none';
