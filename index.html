@@ -258,6 +258,25 @@
         <label style="font-size:0.72rem; color:var(--muted); flex-shrink:0;">Velocità scorrimento</label>
         <input type="range" id="teleprompterSpeed" min="10" max="80" step="5" value="30" style="flex:1;">
       </div>
+      <div class="btn-row">
+        <button class="btn secondary" id="generateSubtitlesBtn">📝 Genera sottotitoli da questo testo</button>
+      </div>
+      <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--line);">
+        <label style="font-size:0.72rem; color:var(--muted); display:block; margin-bottom:6px;">Aggiusta sincronizzazione sottotitoli già generati</label>
+        <div class="row" style="display:flex; gap:8px; margin-bottom:8px;">
+          <div style="flex:1;">
+            <label style="font-size:0.68rem; color:var(--muted);">Anticipa/ritarda (s)</label>
+            <input type="number" id="subtitleShift" step="0.1" value="0" style="width:100%; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px;">
+          </div>
+          <div style="flex:1;">
+            <label style="font-size:0.68rem; color:var(--muted);">Velocità (0.5x–2x)</label>
+            <input type="range" id="subtitleSpeed" min="0.5" max="2" step="0.05" value="1" style="width:100%;">
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn secondary" id="applySubtitleSyncBtn">Applica ai sottotitoli</button>
+        </div>
+      </div>
     </div>
 
     <div id="teleprompterView" style="display:none; background:#000; border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:12px; height:180px; overflow:hidden; position:relative;">
@@ -443,6 +462,11 @@
   const voiceApplyBtn = document.getElementById('voiceApplyBtn');
   const voiceRemoveBtn = document.getElementById('voiceRemoveBtn');
   const voiceScript = document.getElementById('voiceScript');
+  const generateSubtitlesBtn = document.getElementById('generateSubtitlesBtn');
+  const subtitleShift = document.getElementById('subtitleShift');
+  const subtitleSpeed = document.getElementById('subtitleSpeed');
+  const applySubtitleSyncBtn = document.getElementById('applySubtitleSyncBtn');
+  let generatedSubtitleIds = [];
   const teleprompterSpeed = document.getElementById('teleprompterSpeed');
   const teleprompterView = document.getElementById('teleprompterView');
   const teleprompterText = document.getElementById('teleprompterText');
@@ -1273,6 +1297,84 @@
 
   voiceRecordBtn.addEventListener('click', () => {
     if(!voiceRecording) startVoiceRecording(); else stopVoiceRecording();
+  });
+
+  generateSubtitlesBtn.addEventListener('click', () => {
+    const scriptText = voiceScript.value.trim();
+    if(!scriptText){
+      alert('Scrivi prima il testo nel campo "Testo da leggere (gobbo)".');
+      return;
+    }
+    const words = scriptText.split(/\s+/).filter(Boolean);
+    if(words.length === 0) return;
+
+    // Chunk into short caption groups (~6 words or ~34 chars, whichever first)
+    const chunks = [];
+    let current = [];
+    words.forEach(w => {
+      current.push(w);
+      const joined = current.join(' ');
+      if(current.length >= 6 || joined.length >= 34){
+        chunks.push(current.join(' '));
+        current = [];
+      }
+    });
+    if(current.length) chunks.push(current.join(' '));
+
+    // Time base: prefer the voice recording's duration (assuming it reads
+    // this script), otherwise spread across the whole video.
+    const dur = (voice && voice.duration) ? voice.duration : totalDuration();
+    const totalWords = words.length;
+
+    generatedSubtitleIds = [];
+    subtitleShift.value = '0';
+    subtitleSpeed.value = '1';
+
+    let t = 0;
+    chunks.forEach(chunk => {
+      const chunkWordCount = chunk.split(/\s+/).length;
+      const chunkDur = dur * (chunkWordCount / totalWords);
+      const id = nextId++;
+      texts.push({
+        id,
+        text: chunk,
+        start: t,
+        end: t + chunkDur,
+        _baseStart: t,
+        _baseEnd: t + chunkDur,
+        position: 'bottom',
+        fontFamily: 'system',
+        fontSize: 48,
+        color: '#ffffff',
+        bgOpacity: 0.5
+      });
+      generatedSubtitleIds.push(id);
+      t += chunkDur;
+    });
+
+    renderOverlays();
+    renderFrame(scrubTime);
+  });
+
+  applySubtitleSyncBtn.addEventListener('click', () => {
+    if(generatedSubtitleIds.length === 0){
+      alert('Genera prima i sottotitoli dal testo qui sopra.');
+      return;
+    }
+    const shift = parseFloat(subtitleShift.value) || 0;
+    const speed = parseFloat(subtitleSpeed.value) || 1;
+    const firstText = texts.find(t => generatedSubtitleIds.includes(t.id));
+    if(!firstText) return;
+    const pivot = firstText._baseStart;
+    texts.forEach(t => {
+      if(!generatedSubtitleIds.includes(t.id) || t._baseStart === undefined) return;
+      const newStart = Math.max(0, pivot + (t._baseStart - pivot) * speed + shift);
+      const newEnd = Math.max(newStart + 0.1, pivot + (t._baseEnd - pivot) * speed + shift);
+      t.start = newStart;
+      t.end = newEnd;
+    });
+    renderOverlays();
+    renderFrame(scrubTime);
   });
 
   voicePitch.addEventListener('input', () => {
