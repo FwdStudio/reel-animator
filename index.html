@@ -174,6 +174,19 @@
 </style>
 </head>
 <body>
+<datalist id="durationTicks">
+  <option value="1"></option>
+  <option value="1.5"></option>
+  <option value="2"></option>
+  <option value="2.5"></option>
+  <option value="3"></option>
+  <option value="3.5"></option>
+  <option value="4"></option>
+  <option value="4.5"></option>
+  <option value="5"></option>
+  <option value="5.5"></option>
+  <option value="6"></option>
+</datalist>
 
 <header>
   <div class="titleBlock">
@@ -244,6 +257,13 @@
       <label class="btn secondary" for="audioInput">Carica traccia</label>
     </div>
     <input type="file" id="audioInput" accept="audio/*">
+    <div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--line);">
+      <label style="font-size:0.72rem; color:var(--muted); display:block; margin-bottom:6px;">Oppure genera una base gratuita (sintesi, nessuna licenza)</label>
+      <div class="row" style="display:flex; gap:8px;">
+        <select id="musicPresetSelect" style="flex:1; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px;"></select>
+        <button class="btn secondary" id="genPresetBtn">Genera</button>
+      </div>
+    </div>
     <div class="note">Carica un brano dalla tua libreria (assicurati di averne i diritti d'uso). Durante l'export, se il browser lo supporta, la musica viene inclusa nel video; altrimenti solo il video verrà esportato.</div>
   </div>
 
@@ -444,6 +464,8 @@
   const audioVolume = document.getElementById('audioVolume');
   const audioOffset = document.getElementById('audioOffset');
   const audioRemoveBtn = document.getElementById('audioRemoveBtn');
+  const musicPresetSelect = document.getElementById('musicPresetSelect');
+  const genPresetBtn = document.getElementById('genPresetBtn');
   const voiceCard = document.getElementById('voiceCard');
   const voiceEmpty = document.getElementById('voiceEmpty');
   const voiceRecordBtn = document.getElementById('voiceRecordBtn');
@@ -583,7 +605,10 @@
           </div>
           <div class="row">
             <label>Durata</label>
-            <input type="range" data-role="duration" min="1" max="6" step="0.5" value="${im.duration}">
+            <input type="range" data-role="duration" min="1" max="6" step="0.5" value="${im.duration}" list="durationTicks">
+          </div>
+          <div class="btn-row" data-role="duration-presets">
+            ${[1,2,3,4,5,6].map(v => `<button type="button" class="icon-btn" data-duration-preset="${v}" style="width:auto; padding:0 8px; font-size:0.72rem;">${v}s</button>`).join('')}
           </div>
           <div class="row">
             <label>Transizione</label>
@@ -622,6 +647,16 @@
         im.duration = parseFloat(e.target.value);
         frame.querySelector('.idx').textContent = `#${i+1} · ${im.duration.toFixed(1)}s`;
         updateScrubberRange();
+      });
+      frame.querySelectorAll('[data-duration-preset]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const v = parseFloat(btn.getAttribute('data-duration-preset'));
+          im.duration = v;
+          frame.querySelector('[data-role=duration]').value = v;
+          frame.querySelector('.idx').textContent = `#${i+1} · ${im.duration.toFixed(1)}s`;
+          updateScrubberRange();
+          renderFrame(scrubTime);
+        });
       });
       frame.querySelector('[data-action=up]').addEventListener('click', ()=>{
         if(i>0){ [images[i-1], images[i]] = [images[i], images[i-1]]; renderFilmstrip(); }
@@ -1036,7 +1071,141 @@
     }catch(e){ /* not ready yet */ }
   }
 
-  // ---------- Voice recording & editing ----------
+  // ---------- Procedural free music generator (pure synthesis, no licensing) ----------
+  function snapFreq(f, dur){ return Math.round(f*dur)/dur; }
+
+  function renderMusicTrack(cfg){
+    const sr = 44100;
+    const bpm = cfg.bpm || 90;
+    const beatDur = 60/bpm;
+    let dur = cfg.dur || 8;
+    if(cfg.beatAligned){
+      const beats = Math.max(1, Math.round(dur/beatDur));
+      dur = beats*beatDur;
+    }
+    const tempCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const buf = tempCtx.createBuffer(1, Math.round(dur*sr), sr);
+    const data = buf.getChannelData(0);
+    const chordRatios = cfg.chordRatios || [1, 1.26, 1.5];
+    const freqs = chordRatios.map(r => snapFreq(cfg.root * r, dur));
+
+    for(let i=0;i<data.length;i++){
+      const t = i/sr;
+      let s = 0;
+      switch(cfg.style){
+        case 'pad': {
+          freqs.forEach((f,idx)=> s += Math.sin(2*Math.PI*f*t)*(0.16/(idx+1)));
+          const lfo = 0.85 + 0.15*Math.sin(2*Math.PI*(1/dur)*t);
+          s *= lfo;
+          break;
+        }
+        case 'drone': {
+          freqs.forEach((f,idx)=> s += Math.sin(2*Math.PI*f*t)*(0.22/(idx+1)));
+          const lfo = 0.9 + 0.1*Math.sin(2*Math.PI*(1/(dur/2))*t);
+          s *= lfo;
+          break;
+        }
+        case 'lofi': {
+          freqs.forEach((f,idx)=> s += Math.sin(2*Math.PI*f*t)*(0.12/(idx+1)));
+          const beatPos = (t % beatDur)/beatDur;
+          const bassEnv = Math.exp(-beatPos*6);
+          s += Math.sin(2*Math.PI*snapFreq(cfg.root/2, dur)*t) * bassEnv * 0.3;
+          break;
+        }
+        case 'waltzpad': {
+          freqs.forEach((f,idx)=> s += Math.sin(2*Math.PI*f*t)*(0.14/(idx+1)));
+          const beatIndex = Math.floor(t/beatDur) % 3;
+          const beatPos = (t % beatDur)/beatDur;
+          const accent = beatIndex === 0 ? 1.3 : 0.9;
+          const env = Math.exp(-beatPos*4)*0.3 + 0.7;
+          s *= accent*env;
+          break;
+        }
+        case 'beat': {
+          const beatPos = t % beatDur;
+          if(beatPos < 0.12){
+            const freq = 150 - (150-40)*(beatPos/0.12);
+            const env = Math.exp(-beatPos*30);
+            s += Math.sin(2*Math.PI*freq*t)*env*0.6;
+          }
+          const halfBeatPos = t % (beatDur/2);
+          if(halfBeatPos < 0.03){
+            const env = Math.exp(-halfBeatPos*80);
+            s += (Math.random()*2-1)*env*0.2;
+          }
+          break;
+        }
+        case 'arp': {
+          const noteIdx = Math.floor(t/(beatDur/2)) % freqs.length;
+          const f = freqs[noteIdx];
+          const notePos = (t % (beatDur/2))/(beatDur/2);
+          const env = Math.exp(-notePos*4);
+          s += Math.sin(2*Math.PI*f*t)*env*0.35;
+          break;
+        }
+        case 'chiptune': {
+          const noteIdx = Math.floor(t/(beatDur/2)) % freqs.length;
+          const f = freqs[noteIdx];
+          s += Math.sign(Math.sin(2*Math.PI*f*t)) * 0.18;
+          break;
+        }
+        default:
+          freqs.forEach((f,idx)=> s += Math.sin(2*Math.PI*f*t)*(0.15/(idx+1)));
+      }
+      data[i] = Math.max(-1, Math.min(1, s*0.6));
+    }
+
+    const blob = audioBufferToWav(buf);
+    tempCtx.close();
+    return blob;
+  }
+
+  const MUSIC_PRESETS = [
+    { id:'pad_c', label:'Pad Ambient (Do maggiore)', style:'pad', root:130.81, dur:8, chordRatios:[1,1.26,1.5,1.89] },
+    { id:'pad_am', label:'Pad Ambient (La minore)', style:'pad', root:110.00, dur:8, chordRatios:[1,1.2,1.5] },
+    { id:'lofi_c', label:'Lo-fi Soft (Do)', style:'lofi', root:130.81, bpm:80, dur:8, beatAligned:true, chordRatios:[1,1.19,1.5] },
+    { id:'lofi_g', label:'Lo-fi Soft (Sol)', style:'lofi', root:98.00, bpm:75, dur:8, beatAligned:true, chordRatios:[1,1.26,1.5] },
+    { id:'beat_pop', label:'Beat Semplice (Pop, 100bpm)', style:'beat', bpm:100, dur:8, beatAligned:true, root:130.81, chordRatios:[1] },
+    { id:'beat_slow', label:'Beat Semplice (Lento, 70bpm)', style:'beat', bpm:70, dur:8, beatAligned:true, root:130.81, chordRatios:[1] },
+    { id:'arp_corp', label:'Arpeggio Corporate', style:'arp', root:261.63, bpm:110, dur:8, beatAligned:true, chordRatios:[1,1.26,1.5,2] },
+    { id:'drone_cine', label:'Drone Cinematico', style:'drone', root:65.41, dur:10, chordRatios:[1,1.5,2] },
+    { id:'chip_8bit', label:'Chiptune 8-bit', style:'chiptune', root:261.63, bpm:130, dur:8, beatAligned:true, chordRatios:[1,1.19,1.33,1.5] },
+    { id:'waltz', label:'Valzer Delicato (3/4)', style:'waltzpad', root:174.61, bpm:90, dur:9, beatAligned:true, chordRatios:[1,1.26,1.5] }
+  ];
+
+  MUSIC_PRESETS.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.label;
+    musicPresetSelect.appendChild(opt);
+  });
+
+  genPresetBtn.addEventListener('click', () => {
+    const cfg = MUSIC_PRESETS.find(p => p.id === musicPresetSelect.value);
+    if(!cfg) return;
+    genPresetBtn.textContent = 'Genero…';
+    genPresetBtn.disabled = true;
+    setTimeout(() => {
+      try{
+        const blob = renderMusicTrack(cfg);
+        const url = URL.createObjectURL(blob);
+        const audioEl = new Audio();
+        audioEl.src = url;
+        audioEl.loop = true;
+        audioEl.volume = 0.8;
+        music = { name: cfg.label, audioEl, volume: 0.8, offset: 0 };
+        audioEmpty.style.display = 'none';
+        audioControls.style.display = '';
+        audioName.textContent = cfg.label;
+        audioVolume.value = '0.8';
+        audioOffset.value = '0';
+      }catch(e){
+        alert('Errore nella generazione della base: ' + e.message);
+      }
+      genPresetBtn.textContent = 'Genera';
+      genPresetBtn.disabled = false;
+    }, 10);
+  });
   function writeWavString(view, offset, str){
     for(let i=0;i<str.length;i++) view.setUint8(offset+i, str.charCodeAt(i));
   }
