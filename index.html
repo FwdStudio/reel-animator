@@ -1074,6 +1074,22 @@
   // ---------- Procedural free music generator (pure synthesis, no licensing) ----------
   function snapFreq(f, dur){ return Math.round(f*dur)/dur; }
 
+  function warmTone(f, t){
+    // Fundamental + soft 2nd/3rd harmonics = warmer than a bare sine
+    return Math.sin(2*Math.PI*f*t)
+         + 0.18*Math.sin(2*Math.PI*f*2*t)
+         + 0.08*Math.sin(2*Math.PI*f*3*t);
+  }
+
+  function chordFreqsAt(t, cfg, dur){
+    const progression = cfg.progression || [1];
+    const chordDur = dur / progression.length;
+    const idx = Math.floor(t / chordDur) % progression.length;
+    const rootMul = progression[idx];
+    const chordRatios = cfg.chordRatios || [1, 1.25, 1.5];
+    return chordRatios.map(r => cfg.root * rootMul * r);
+  }
+
   function renderMusicTrack(cfg){
     const sr = 44100;
     const bpm = cfg.bpm || 90;
@@ -1083,42 +1099,68 @@
       const beats = Math.max(1, Math.round(dur/beatDur));
       dur = beats*beatDur;
     }
+    // Chord-progression styles need the loop length to be an exact multiple
+    // of the progression length so chords change evenly and the buffer
+    // still loops seamlessly.
+    if(cfg.progression && cfg.progression.length){
+      const segDur = cfg.beatAligned ? beatDur*4 : 2; // ~2s per chord by default
+      dur = segDur * cfg.progression.length;
+    }
+
     const tempCtx = new (window.AudioContext || window.webkitAudioContext)();
     const buf = tempCtx.createBuffer(1, Math.round(dur*sr), sr);
     const data = buf.getChannelData(0);
     const chordRatios = cfg.chordRatios || [1, 1.26, 1.5];
-    const freqs = chordRatios.map(r => snapFreq(cfg.root * r, dur));
+    const staticFreqs = chordRatios.map(r => snapFreq(cfg.root * r, dur));
+    const noteDur = beatDur/2;
 
     for(let i=0;i<data.length;i++){
       const t = i/sr;
       let s = 0;
       switch(cfg.style){
         case 'pad': {
-          freqs.forEach((f,idx)=> s += Math.sin(2*Math.PI*f*t)*(0.16/(idx+1)));
+          const freqs = cfg.progression ? chordFreqsAt(t, cfg, dur) : staticFreqs;
+          freqs.forEach((f,idx)=> s += warmTone(f,t)*(0.14/(idx+1)));
           const lfo = 0.85 + 0.15*Math.sin(2*Math.PI*(1/dur)*t);
           s *= lfo;
+          // simple plucky top melody riding on the current chord
+          const noteIdx = Math.floor(t/noteDur) % freqs.length;
+          const notePos = (t % noteDur)/noteDur;
+          const env = Math.exp(-notePos*3.2);
+          s += warmTone(freqs[noteIdx]*2, t) * env * 0.16;
           break;
         }
         case 'drone': {
-          freqs.forEach((f,idx)=> s += Math.sin(2*Math.PI*f*t)*(0.22/(idx+1)));
+          staticFreqs.forEach((f,idx)=> s += warmTone(f,t)*(0.2/(idx+1)));
           const lfo = 0.9 + 0.1*Math.sin(2*Math.PI*(1/(dur/2))*t);
           s *= lfo;
           break;
         }
         case 'lofi': {
-          freqs.forEach((f,idx)=> s += Math.sin(2*Math.PI*f*t)*(0.12/(idx+1)));
+          const freqs = cfg.progression ? chordFreqsAt(t, cfg, dur) : staticFreqs;
+          freqs.forEach((f,idx)=> s += warmTone(f,t)*(0.11/(idx+1)));
           const beatPos = (t % beatDur)/beatDur;
           const bassEnv = Math.exp(-beatPos*6);
           s += Math.sin(2*Math.PI*snapFreq(cfg.root/2, dur)*t) * bassEnv * 0.3;
+          // gentle melodic top notes on the off-beat
+          const noteIdx = Math.floor(t/noteDur) % freqs.length;
+          const notePos = (t % noteDur)/noteDur;
+          const env = Math.exp(-notePos*4);
+          s += warmTone(freqs[noteIdx]*2, t) * env * 0.14;
           break;
         }
         case 'waltzpad': {
-          freqs.forEach((f,idx)=> s += Math.sin(2*Math.PI*f*t)*(0.14/(idx+1)));
+          const freqs = cfg.progression ? chordFreqsAt(t, cfg, dur) : staticFreqs;
+          freqs.forEach((f,idx)=> s += warmTone(f,t)*(0.13/(idx+1)));
           const beatIndex = Math.floor(t/beatDur) % 3;
           const beatPos = (t % beatDur)/beatDur;
           const accent = beatIndex === 0 ? 1.3 : 0.9;
           const env = Math.exp(-beatPos*4)*0.3 + 0.7;
           s *= accent*env;
+          const noteIdx = Math.floor(t/beatDur) % freqs.length;
+          const notePos = (t % beatDur)/beatDur;
+          const menv = Math.exp(-notePos*3);
+          s += warmTone(freqs[noteIdx]*2, t) * menv * 0.15;
           break;
         }
         case 'beat': {
@@ -1136,23 +1178,24 @@
           break;
         }
         case 'arp': {
+          const freqs = cfg.progression ? chordFreqsAt(t, cfg, dur) : staticFreqs;
           const noteIdx = Math.floor(t/(beatDur/2)) % freqs.length;
           const f = freqs[noteIdx];
           const notePos = (t % (beatDur/2))/(beatDur/2);
           const env = Math.exp(-notePos*4);
-          s += Math.sin(2*Math.PI*f*t)*env*0.35;
+          s += warmTone(f,t)*env*0.32;
           break;
         }
         case 'chiptune': {
-          const noteIdx = Math.floor(t/(beatDur/2)) % freqs.length;
-          const f = freqs[noteIdx];
+          const noteIdx = Math.floor(t/(beatDur/2)) % staticFreqs.length;
+          const f = staticFreqs[noteIdx];
           s += Math.sign(Math.sin(2*Math.PI*f*t)) * 0.18;
           break;
         }
         default:
-          freqs.forEach((f,idx)=> s += Math.sin(2*Math.PI*f*t)*(0.15/(idx+1)));
+          staticFreqs.forEach((f,idx)=> s += warmTone(f,t)*(0.15/(idx+1)));
       }
-      data[i] = Math.max(-1, Math.min(1, s*0.6));
+      data[i] = Math.max(-1, Math.min(1, s*0.55));
     }
 
     const blob = audioBufferToWav(buf);
@@ -1161,16 +1204,16 @@
   }
 
   const MUSIC_PRESETS = [
-    { id:'pad_c', label:'Pad Ambient (Do maggiore)', style:'pad', root:130.81, dur:8, chordRatios:[1,1.26,1.5,1.89] },
-    { id:'pad_am', label:'Pad Ambient (La minore)', style:'pad', root:110.00, dur:8, chordRatios:[1,1.2,1.5] },
-    { id:'lofi_c', label:'Lo-fi Soft (Do)', style:'lofi', root:130.81, bpm:80, dur:8, beatAligned:true, chordRatios:[1,1.19,1.5] },
-    { id:'lofi_g', label:'Lo-fi Soft (Sol)', style:'lofi', root:98.00, bpm:75, dur:8, beatAligned:true, chordRatios:[1,1.26,1.5] },
+    { id:'pad_c', label:'Pad Ambient (Do maggiore)', style:'pad', root:130.81, bpm:70, beatAligned:true, chordRatios:[1,1.26,1.5,1.89], progression:[1, 1.667, 1.333, 1.5] },
+    { id:'pad_am', label:'Pad Ambient (La minore)', style:'pad', root:110.00, bpm:70, beatAligned:true, chordRatios:[1,1.2,1.5], progression:[1, 0.8, 1.333, 0.9] },
+    { id:'lofi_c', label:'Lo-fi Soft (Do)', style:'lofi', root:130.81, bpm:80, beatAligned:true, chordRatios:[1,1.19,1.5], progression:[1, 1.667, 1.333, 1.5] },
+    { id:'lofi_g', label:'Lo-fi Soft (Sol)', style:'lofi', root:98.00, bpm:75, beatAligned:true, chordRatios:[1,1.26,1.5], progression:[1, 1.667, 1.333, 1.5] },
     { id:'beat_pop', label:'Beat Semplice (Pop, 100bpm)', style:'beat', bpm:100, dur:8, beatAligned:true, root:130.81, chordRatios:[1] },
     { id:'beat_slow', label:'Beat Semplice (Lento, 70bpm)', style:'beat', bpm:70, dur:8, beatAligned:true, root:130.81, chordRatios:[1] },
-    { id:'arp_corp', label:'Arpeggio Corporate', style:'arp', root:261.63, bpm:110, dur:8, beatAligned:true, chordRatios:[1,1.26,1.5,2] },
+    { id:'arp_corp', label:'Arpeggio Corporate', style:'arp', root:261.63, bpm:110, beatAligned:true, chordRatios:[1,1.26,1.5,2], progression:[1, 1.667, 1.333, 1.5] },
     { id:'drone_cine', label:'Drone Cinematico', style:'drone', root:65.41, dur:10, chordRatios:[1,1.5,2] },
     { id:'chip_8bit', label:'Chiptune 8-bit', style:'chiptune', root:261.63, bpm:130, dur:8, beatAligned:true, chordRatios:[1,1.19,1.33,1.5] },
-    { id:'waltz', label:'Valzer Delicato (3/4)', style:'waltzpad', root:174.61, bpm:90, dur:9, beatAligned:true, chordRatios:[1,1.26,1.5] }
+    { id:'waltz', label:'Valzer Delicato (3/4)', style:'waltzpad', root:174.61, bpm:90, beatAligned:true, chordRatios:[1,1.26,1.5], progression:[1, 0.8, 1.333, 0.9] }
   ];
 
   MUSIC_PRESETS.forEach(p => {
