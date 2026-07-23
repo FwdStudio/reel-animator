@@ -1983,12 +1983,16 @@
     exportStatus.className = 'status';
     exportStatus.textContent = 'Preparazione…';
 
-    // On iOS/Safari, MediaRecorder.isTypeSupported can falsely report WebM
-    // (vp8/vp9) as supported, producing a file iOS can never actually play
-    // or save. Force MP4 there and skip WebM entirely.
-    const mimeCandidates = isIOS()
-      ? ['video/mp4', 'video/mp4;codecs=avc1']
-      : ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4'];
+    // MP4 is far more universally playable (iOS, social apps, etc.) than
+    // WebM, so we prefer it everywhere and only fall back to WebM if the
+    // browser genuinely can't record MP4 at all.
+    const mimeCandidates = [
+      'video/mp4;codecs=avc1',
+      'video/mp4',
+      'video/webm;codecs=vp9',
+      'video/webm;codecs=vp8',
+      'video/webm'
+    ];
     const mime = mimeCandidates.find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m));
     if(!mime){
       exportStatus.className = 'status err';
