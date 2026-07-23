@@ -199,14 +199,15 @@
 <main>
 
   <div class="card">
-    <h2>1 · Immagini</h2>
+    <h2>1 · Immagini e Video</h2>
     <div class="drop" id="dropZone">
-      Tocca per scegliere le foto<br>(o trascinale qui da desktop)
+      Tocca per scegliere foto o clip video<br>(o trascinale qui da desktop)
       <div class="btn-row" style="justify-content:center;">
-        <label class="btn" for="fileInput">Scegli foto</label>
+        <label class="btn" for="fileInput">Scegli file</label>
       </div>
-      <input type="file" id="fileInput" accept="image/*" multiple>
+      <input type="file" id="fileInput" accept="image/*,video/*" multiple>
     </div>
+    <div class="note">Le clip video vengono riprodotte per la loro durata (con possibilità di tagliare inizio/fine) e possono avere pan/zoom, transizioni, testo, musica e voce come le foto.</div>
   </div>
 
   <div class="card" id="filmstripCard" style="display:none;">
@@ -429,6 +430,7 @@
   let nextId = 1;
 
   let playing = false;
+  let exporting = false;
   let playStart = 0; // performance.now() offset
   let scrubTime = 0;
   let rafHandle = null;
@@ -543,14 +545,19 @@
   });
 
   function addFiles(fileList){
-    const files = Array.from(fileList).filter(f => f.type.startsWith('image/'));
+    const files = Array.from(fileList).filter(f => f.type.startsWith('image/') || f.type.startsWith('video/'));
     files.forEach(file => {
+      if(file.type.startsWith('video/')){
+        addVideoFile(file);
+        return;
+      }
       const reader = new FileReader();
       reader.onload = () => {
         const img = new Image();
         img.onload = () => {
           images.push({
             id: nextId++,
+            type: 'image',
             img,
             duration: 3,
             effect: 'zoom-in',
@@ -573,16 +580,80 @@
     fileInput.value = '';
   }
 
+  function addVideoFile(file){
+    const reader = new FileReader();
+    reader.onload = () => {
+      const videoEl = document.createElement('video');
+      videoEl.muted = true; // unmuted only while actively playing, if "includi audio" is checked
+      videoEl.playsInline = true;
+      videoEl.preload = 'auto';
+      videoEl.loop = false;
+      videoEl.onloadedmetadata = () => {
+        const dur = videoEl.duration && isFinite(videoEl.duration) ? videoEl.duration : 5;
+        images.push({
+          id: nextId++,
+          type: 'video',
+          videoEl,
+          naturalWidth: videoEl.videoWidth,
+          naturalHeight: videoEl.videoHeight,
+          trimStart: 0,
+          trimEnd: dur,
+          duration: dur,
+          includeAudio: true,
+          effect: 'static',
+          transition: 'dissolve'
+        });
+        renderFilmstrip();
+        updateSectionsVisibility();
+        updateScrubberRange();
+        renderFrame(scrubTime);
+      };
+      videoEl.onerror = () => {
+        console.error('Impossibile caricare il video:', file.name);
+      };
+      videoEl.src = reader.result; // data: URL
+    };
+    reader.onerror = () => {
+      console.error('Impossibile leggere il file video:', file.name);
+    };
+    reader.readAsDataURL(file);
+  }
+
   // ---------- Filmstrip UI ----------
   function renderFilmstrip(){
     filmstrip.innerHTML = '';
     images.forEach((im, i) => {
+      const isVideo = im.type === 'video';
       const frame = document.createElement('div');
       frame.className = 'frame';
+      const thumbHtml = isVideo
+        ? `<video src="${im.videoEl.src}" muted playsinline style="width:54px; height:96px; object-fit:cover; border-radius:4px; flex-shrink:0;"></video>`
+        : `<img src="${im.img.src}" alt="">`;
+      const durationControlsHtml = isVideo
+        ? `
+          <div class="row">
+            <label>Taglio (s)</label>
+            <input type="number" data-role="trimStart" min="0" step="0.1" value="${im.trimStart.toFixed(1)}" style="width:70px;">
+            <span style="color:var(--muted); font-size:0.75rem;">→</span>
+            <input type="number" data-role="trimEnd" min="0" step="0.1" value="${im.trimEnd.toFixed(1)}" style="width:70px;">
+          </div>
+          <label style="display:flex; align-items:center; gap:6px; font-size:0.78rem; margin-top:4px;">
+            <input type="checkbox" data-role="includeAudio" ${im.includeAudio ? 'checked' : ''}> Includi audio del video
+          </label>
+        `
+        : `
+          <div class="row">
+            <label>Durata</label>
+            <input type="range" data-role="duration" min="1" max="6" step="0.5" value="${im.duration}" list="durationTicks">
+          </div>
+          <div class="btn-row" data-role="duration-presets">
+            ${[1,2,3,4,5,6].map(v => `<button type="button" class="icon-btn" data-duration-preset="${v}" style="width:auto; padding:0 8px; font-size:0.72rem;">${v}s</button>`).join('')}
+          </div>
+        `;
       frame.innerHTML = `
-        <img src="${im.img.src}" alt="">
+        ${thumbHtml}
         <div class="meta">
-          <div class="idx">#${i+1} · ${im.duration.toFixed(1)}s</div>
+          <div class="idx">#${i+1} · ${isVideo ? '🎬 ' : ''}${im.duration.toFixed(1)}s</div>
           <div class="row">
             <label>Movimento</label>
             <select data-role="effect">
@@ -603,13 +674,7 @@
               <option value="static">Statico</option>
             </select>
           </div>
-          <div class="row">
-            <label>Durata</label>
-            <input type="range" data-role="duration" min="1" max="6" step="0.5" value="${im.duration}" list="durationTicks">
-          </div>
-          <div class="btn-row" data-role="duration-presets">
-            ${[1,2,3,4,5,6].map(v => `<button type="button" class="icon-btn" data-duration-preset="${v}" style="width:auto; padding:0 8px; font-size:0.72rem;">${v}s</button>`).join('')}
-          </div>
+          ${durationControlsHtml}
           <div class="row">
             <label>Transizione</label>
             <select data-role="transition">
@@ -643,21 +708,44 @@
       frame.querySelector('[data-role=transition]').addEventListener('change', e=>{
         im.transition = e.target.value;
       });
-      frame.querySelector('[data-role=duration]').addEventListener('input', e=>{
-        im.duration = parseFloat(e.target.value);
-        frame.querySelector('.idx').textContent = `#${i+1} · ${im.duration.toFixed(1)}s`;
-        updateScrubberRange();
-      });
-      frame.querySelectorAll('[data-duration-preset]').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const v = parseFloat(btn.getAttribute('data-duration-preset'));
-          im.duration = v;
-          frame.querySelector('[data-role=duration]').value = v;
-          frame.querySelector('.idx').textContent = `#${i+1} · ${im.duration.toFixed(1)}s`;
+
+      if(isVideo){
+        const trimStartInput = frame.querySelector('[data-role=trimStart]');
+        const trimEndInput = frame.querySelector('[data-role=trimEnd]');
+        const includeAudioCheckbox = frame.querySelector('[data-role=includeAudio]');
+        function updateVideoDuration(){
+          const s = Math.max(0, parseFloat(trimStartInput.value) || 0);
+          const e = Math.max(s + 0.1, parseFloat(trimEndInput.value) || (s+1));
+          im.trimStart = s;
+          im.trimEnd = e;
+          im.duration = e - s;
+          frame.querySelector('.idx').textContent = `#${i+1} · 🎬 ${im.duration.toFixed(1)}s`;
           updateScrubberRange();
           renderFrame(scrubTime);
+        }
+        trimStartInput.addEventListener('input', updateVideoDuration);
+        trimEndInput.addEventListener('input', updateVideoDuration);
+        includeAudioCheckbox.addEventListener('change', e=>{
+          im.includeAudio = e.target.checked;
         });
-      });
+      } else {
+        frame.querySelector('[data-role=duration]').addEventListener('input', e=>{
+          im.duration = parseFloat(e.target.value);
+          frame.querySelector('.idx').textContent = `#${i+1} · ${im.duration.toFixed(1)}s`;
+          updateScrubberRange();
+        });
+        frame.querySelectorAll('[data-duration-preset]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const v = parseFloat(btn.getAttribute('data-duration-preset'));
+            im.duration = v;
+            frame.querySelector('[data-role=duration]').value = v;
+            frame.querySelector('.idx').textContent = `#${i+1} · ${im.duration.toFixed(1)}s`;
+            updateScrubberRange();
+            renderFrame(scrubTime);
+          });
+        });
+      }
+
       frame.querySelector('[data-action=up]').addEventListener('click', ()=>{
         if(i>0){ [images[i-1], images[i]] = [images[i], images[i-1]]; renderFilmstrip(); }
       });
@@ -665,6 +753,7 @@
         if(i<images.length-1){ [images[i+1], images[i]] = [images[i], images[i+1]]; renderFilmstrip(); }
       });
       frame.querySelector('[data-action=del]').addEventListener('click', ()=>{
+        if(isVideo){ im.videoEl.pause(); }
         images.splice(i,1); renderFilmstrip(); updateSectionsVisibility(); updateScrubberRange(); renderFrame(scrubTime);
       });
 
@@ -768,6 +857,14 @@
   }
 
   // ---------- Rendering ----------
+  function getSourceEl(im){
+    return im.type === 'video' ? im.videoEl : im.img;
+  }
+  function getSourceDims(im){
+    if(im.type === 'video') return { w: im.naturalWidth || im.videoEl.videoWidth, h: im.naturalHeight || im.videoEl.videoHeight };
+    return { w: im.img.naturalWidth, h: im.img.naturalHeight };
+  }
+
   function coverRect(imgW, imgH, boxW, boxH){
     const scale = Math.max(boxW/imgW, boxH/imgH);
     const w = imgW*scale, h = imgH*scale;
@@ -776,7 +873,9 @@
 
   function drawImageWithEffect(im, progress){
     // progress: 0..1 across this image's duration
-    const base = coverRect(im.img.naturalWidth, im.img.naturalHeight, CANVAS_W, CANVAS_H);
+    const dims = getSourceDims(im);
+    if(!dims.w || !dims.h) return; // video metadata not ready yet
+    const base = coverRect(dims.w, dims.h, CANVAS_W, CANVAS_H);
     // Extra zoom headroom so pans don't reveal edges
     const zoomRange = 0.18;
     let scale = 1, dx = 0, dy = 0, rotationDeg = 0;
@@ -829,10 +928,10 @@
       ctx.translate(CANVAS_W/2, CANVAS_H/2);
       ctx.rotate(rotationDeg * Math.PI/180);
       ctx.translate(-CANVAS_W/2, -CANVAS_H/2);
-      ctx.drawImage(im.img, x, y, w, h);
+      ctx.drawImage(getSourceEl(im), x, y, w, h);
       ctx.restore();
     } else {
-      ctx.drawImage(im.img, x, y, w, h);
+      ctx.drawImage(getSourceEl(im), x, y, w, h);
     }
   }
 
@@ -900,6 +999,36 @@
       acc += d;
     }
     return null;
+  }
+
+  // Keeps every video clip's play/pause/seek/mute state correct as the
+  // global timeline advances — only the currently active clip plays (and
+  // is unmuted, if "includi audio" is checked); every other video clip is
+  // paused and silent.
+  function syncVideoClips(globalTime){
+    const found = findImageAt(globalTime);
+    images.forEach(im => {
+      if(im.type !== 'video') return;
+      const isActive = !!(found && found.im === im);
+      if(!isActive){
+        if(!im.videoEl.paused) im.videoEl.pause();
+        im.videoEl.muted = true;
+        return;
+      }
+      const target = im.trimStart + Math.max(0, found.localTime);
+      im.videoEl.muted = !im.includeAudio;
+      if(playing || exporting){
+        if(im.videoEl.paused){
+          try{ im.videoEl.currentTime = target; }catch(e){}
+          im.videoEl.play().catch(()=>{});
+        } else if(Math.abs(im.videoEl.currentTime - target) > 0.2){
+          try{ im.videoEl.currentTime = target; }catch(e){}
+        }
+      } else {
+        if(!im.videoEl.paused) im.videoEl.pause();
+        try{ im.videoEl.currentTime = target; }catch(e){}
+      }
+    });
   }
 
   function drawTransition(curIm, nextIm, curProgress, t, type){
@@ -1004,6 +1133,7 @@
 
     const total = totalDuration();
     time = Math.max(0, Math.min(time, total));
+    syncVideoClips(time);
     const found = findImageAt(time);
     if(!found) return;
     const { im, idx, localTime } = found;
@@ -1809,6 +1939,7 @@
       cancelAnimationFrame(rafHandle);
       if(music) music.audioEl.pause();
       if(voice) voice.audioEl.pause();
+      images.forEach(im => { if(im.type==='video') im.videoEl.pause(); });
     }
   });
 
@@ -1869,14 +2000,18 @@
     }
 
     try{
+      exporting = true;
       const canvasStream = canvas.captureStream(30);
       let combinedStream = canvasStream;
       let audioCtx = null;
       let includesAudio = false;
 
-      if(music || voice){
+      const videoClipsWithAudio = images.filter(im => im.type === 'video' && im.includeAudio);
+
+      if(music || voice || videoClipsWithAudio.length){
         try{
           audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          if(audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
           const dest = audioCtx.createMediaStreamDestination();
 
           if(music){
@@ -1895,6 +2030,17 @@
             voiceGainNode.connect(dest);
             voiceGainNode.connect(audioCtx.destination);
           }
+          videoClipsWithAudio.forEach(im => {
+            // Each video's audio only actually plays during its own segment
+            // (syncVideoClips pauses it otherwise), so connecting all of
+            // them up-front is safe — silence outside their active window.
+            const vidSource = audioCtx.createMediaElementSource(im.videoEl);
+            const vidGain = audioCtx.createGain();
+            vidGain.gain.value = 1;
+            vidSource.connect(vidGain);
+            vidGain.connect(dest);
+            vidGain.connect(audioCtx.destination);
+          });
 
           const audioTrack = dest.stream.getAudioTracks()[0];
           if(audioTrack){
@@ -1925,7 +2071,7 @@
       const fps = 30;
       const frameDur = 1/fps;
       for(let t=0; t<=total; t+=frameDur){
-        renderFrame(t);
+        renderFrame(t); // also drives syncVideoClips(t) internally
         await new Promise(r => setTimeout(r, 1000/fps));
       }
       renderFrame(total);
@@ -1933,6 +2079,7 @@
       recorder.stop();
       if(music) music.audioEl.pause();
       if(voice) voice.audioEl.pause();
+      images.forEach(im => { if(im.type==='video') im.videoEl.pause(); });
       if(audioCtx) audioCtx.close().catch(()=>{});
       await done;
 
@@ -1955,6 +2102,7 @@
       exportStatus.className = 'status err';
       exportStatus.textContent = 'Errore durante l\'esportazione: ' + err.message;
     }finally{
+      exporting = false;
       exportBtn.disabled = false;
     }
   });
@@ -1971,6 +2119,7 @@
     if(voice){ voice.audioEl.pause(); voice = null; }
     if(voiceRecording) stopVoiceRecording();
     stopTeleprompter();
+    images.forEach(im => { if(im.type==='video') im.videoEl.pause(); });
 
     images = [];
     texts = [];
