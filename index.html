@@ -1142,12 +1142,17 @@
     const next = images[idx+1];
     const inTransitionWindow = next && im.transition !== 'cut' && localTime > im.duration - CROSSFADE;
 
+    const useNativeFilter = currentFilter !== 'none' && filterWorksNatively();
+    if(useNativeFilter) ctx.filter = FILTER_CSS[currentFilter];
+
     if(inTransitionWindow){
       const t = (localTime - (im.duration - CROSSFADE)) / CROSSFADE;
       drawTransition(im, next, progress, t, im.transition);
     } else {
       drawImageWithEffect(im, progress);
     }
+
+    if(useNativeFilter) ctx.filter = 'none';
 
     applyColorFilter();
     drawVignette();
@@ -1823,13 +1828,48 @@
     vintage: 'sepia(30%) contrast(110%) saturate(85%) brightness(95%)'
   };
 
+  // Some mobile browsers (notably older iOS Safari) silently ignore
+  // ctx.filter — it doesn't throw, it just does nothing. isTypeSupported-
+  // style feature checks can't catch that, so we verify with an actual
+  // pixel test once, then reuse the fast native path everywhere it works
+  // (much cheaper than per-pixel JS) and fall back to manual pixel math
+  // only where it's genuinely needed.
+  let ctxFilterWorks = null;
+  function testCtxFilterSupport(){
+    try{
+      const src = document.createElement('canvas');
+      src.width = 4; src.height = 4;
+      const sctx = src.getContext('2d');
+      sctx.fillStyle = 'rgb(200,50,50)';
+      sctx.fillRect(0,0,4,4);
+
+      const dst = document.createElement('canvas');
+      dst.width = 4; dst.height = 4;
+      const dctx = dst.getContext('2d');
+      dctx.filter = 'grayscale(100%)';
+      dctx.drawImage(src,0,0);
+      const px = dctx.getImageData(0,0,1,1).data;
+      // If grayscale actually applied, r/g/b should be close together.
+      // Original color (200,50,50) is clearly not, so this is a solid test.
+      return Math.abs(px[0]-px[1]) < 10 && Math.abs(px[1]-px[2]) < 10;
+    }catch(e){
+      return false;
+    }
+  }
+  function filterWorksNatively(){
+    if(ctxFilterWorks === null) ctxFilterWorks = testCtxFilterSupport();
+    return ctxFilterWorks;
+  }
+
   function clamp255(v){ return v < 0 ? 0 : (v > 255 ? 255 : v); }
 
-  // Manual pixel-based color filters. ctx.filter (CSS filters on Canvas2D)
-  // is not reliably supported on every mobile browser, so we do the math
-  // ourselves on the raw pixel data — slower, but works everywhere.
+  // Manual pixel-based color filters — used only as a fallback on browsers
+  // where ctx.filter doesn't actually work (see filterWorksNatively above).
+  // Much slower (full-frame per-pixel JS math), so we avoid it whenever the
+  // fast native path is available.
   function applyColorFilter(){
     if(currentFilter === 'none') return;
+    if(filterWorksNatively()) return; // already applied natively pre-draw
     let imgData;
     try{
       imgData = ctx.getImageData(0, 0, CANVAS_W, CANVAS_H);
@@ -2180,4 +2220,3 @@
 </script>
 </body>
 </html>
-
