@@ -555,24 +555,7 @@
       }
       const reader = new FileReader();
       reader.onload = () => {
-        const img = new Image();
-        img.onload = () => {
-          images.push({
-            id: nextId++,
-            type: 'image',
-            img,
-            duration: 3,
-            effect: 'zoom-in',
-            transition: 'dissolve'
-          });
-          renderFilmstrip();
-          updateSectionsVisibility();
-          renderFrame(scrubTime);
-        };
-        img.onerror = () => {
-          console.error('Impossibile caricare l\'immagine:', file.name);
-        };
-        img.src = reader.result; // data: URL
+        addImageFromDataURL(reader.result);
       };
       reader.onerror = () => {
         console.error('Impossibile leggere il file:', file.name);
@@ -582,43 +565,76 @@
     fileInput.value = '';
   }
 
+  // Core "add an image frame" logic, shared by the manual file-picker path
+  // and the programmatic API (addImageFromDataURL) below.
+  function addImageFromDataURL(dataUrl, opts){
+    opts = opts || {};
+    const img = new Image();
+    img.onload = () => {
+      images.push({
+        id: nextId++,
+        type: 'image',
+        img,
+        duration: opts.duration || 3,
+        effect: opts.effect || 'zoom-in',
+        transition: opts.transition || 'dissolve'
+      });
+      renderFilmstrip();
+      updateSectionsVisibility();
+      renderFrame(scrubTime);
+    };
+    img.onerror = () => {
+      console.error('Impossibile caricare l\'immagine da data URL');
+    };
+    img.src = dataUrl;
+  }
+
   function addVideoFile(file){
     const reader = new FileReader();
     reader.onload = () => {
-      const videoEl = document.createElement('video');
-      videoEl.muted = true; // unmuted only while actively playing, if "includi audio" is checked
-      videoEl.playsInline = true;
-      videoEl.preload = 'auto';
-      videoEl.loop = false;
-      videoEl.onloadedmetadata = () => {
-        const dur = videoEl.duration && isFinite(videoEl.duration) ? videoEl.duration : 5;
-        images.push({
-          id: nextId++,
-          type: 'video',
-          videoEl,
-          naturalWidth: videoEl.videoWidth,
-          naturalHeight: videoEl.videoHeight,
-          trimStart: 0,
-          trimEnd: dur,
-          duration: dur,
-          includeAudio: true,
-          effect: 'static',
-          transition: 'dissolve'
-        });
-        renderFilmstrip();
-        updateSectionsVisibility();
-        updateScrubberRange();
-        renderFrame(scrubTime);
-      };
-      videoEl.onerror = () => {
-        console.error('Impossibile caricare il video:', file.name);
-      };
-      videoEl.src = reader.result; // data: URL
+      addVideoFromDataURL(reader.result);
     };
     reader.onerror = () => {
       console.error('Impossibile leggere il file video:', file.name);
     };
     reader.readAsDataURL(file);
+  }
+
+  // Core "add a video frame" logic, shared by the manual file-picker path
+  // and the programmatic API (addVideoFromDataURL) below.
+  function addVideoFromDataURL(dataUrl, opts){
+    opts = opts || {};
+    const videoEl = document.createElement('video');
+    videoEl.muted = true; // unmuted only while actively playing, if "includi audio" is checked
+    videoEl.playsInline = true;
+    videoEl.preload = 'auto';
+    videoEl.loop = false;
+    videoEl.onloadedmetadata = () => {
+      const dur = videoEl.duration && isFinite(videoEl.duration) ? videoEl.duration : 5;
+      const trimStart = opts.trimStart || 0;
+      const trimEnd = opts.trimEnd || dur;
+      images.push({
+        id: nextId++,
+        type: 'video',
+        videoEl,
+        naturalWidth: videoEl.videoWidth,
+        naturalHeight: videoEl.videoHeight,
+        trimStart,
+        trimEnd,
+        duration: trimEnd - trimStart,
+        includeAudio: opts.includeAudio !== undefined ? opts.includeAudio : true,
+        effect: opts.effect || 'static',
+        transition: opts.transition || 'dissolve'
+      });
+      renderFilmstrip();
+      updateSectionsVisibility();
+      updateScrubberRange();
+      renderFrame(scrubTime);
+    };
+    videoEl.onerror = () => {
+      console.error('Impossibile caricare il video da data URL');
+    };
+    videoEl.src = dataUrl;
   }
 
   // ---------- Filmstrip UI ----------
@@ -771,19 +787,27 @@
 
   // ---------- Text overlays ----------
   document.getElementById('addTextBtn').addEventListener('click', ()=>{
+    addTextOverlay({});
+  });
+
+  // Core "add a text overlay" logic, shared by the manual button and the
+  // programmatic API (addTextOverlay) below.
+  function addTextOverlay(opts){
+    opts = opts || {};
     texts.push({
       id: nextId++,
-      text: 'Il tuo testo qui',
-      start: 0,
-      end: Math.min(2, totalDuration()||2),
-      position: 'bottom',
-      fontFamily: 'system',
-      fontSize: 56,
-      color: '#ffffff',
-      bgOpacity: 0.45
+      text: opts.text || 'Il tuo testo qui',
+      start: opts.start !== undefined ? opts.start : 0,
+      end: opts.end !== undefined ? opts.end : Math.min(2, totalDuration()||2),
+      position: opts.position || 'bottom',
+      fontFamily: opts.fontFamily || 'system',
+      fontSize: opts.fontSize || 56,
+      color: opts.color || '#ffffff',
+      bgOpacity: opts.bgOpacity !== undefined ? opts.bgOpacity : 0.45
     });
     renderOverlays();
-  });
+    renderFrame(scrubTime);
+  }
 
   function renderOverlays(){
     overlayList.innerHTML = '';
@@ -1171,27 +1195,33 @@
     if(!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      const audioEl = new Audio();
-      audioEl.src = reader.result;
-      audioEl.preload = 'auto';
-      audioEl.loop = true; // whole-track native loop by default (no trim yet)
-      music = { name: file.name, audioEl, volume: 0.8, offset: 0, trimEnd: 0 };
-      audioEl.addEventListener('timeupdate', () => {
-        if(music && music.trimEnd > 0 && audioEl.currentTime >= music.trimEnd){
-          audioEl.currentTime = music.offset || 0;
-        }
-      });
-      audioEmpty.style.display = 'none';
-      audioControls.style.display = '';
-      audioName.textContent = file.name;
-      audioVolume.value = '0.8';
-      audioOffset.value = '0';
-      audioTrimEnd.value = '0';
-      audioEl.volume = 0.8;
+      setMusicFromDataURL(reader.result, file.name);
     };
     reader.readAsDataURL(file);
     audioInput.value = '';
   });
+
+  // Core "set background music" logic, shared by the manual file-picker
+  // path and the programmatic API (setMusicFromDataURL) below.
+  function setMusicFromDataURL(dataUrl, name){
+    const audioEl = new Audio();
+    audioEl.src = dataUrl;
+    audioEl.preload = 'auto';
+    audioEl.loop = true; // whole-track native loop by default (no trim yet)
+    music = { name: name || 'traccia', audioEl, volume: 0.8, offset: 0, trimEnd: 0 };
+    audioEl.addEventListener('timeupdate', () => {
+      if(music && music.trimEnd > 0 && audioEl.currentTime >= music.trimEnd){
+        audioEl.currentTime = music.offset || 0;
+      }
+    });
+    audioEmpty.style.display = 'none';
+    audioControls.style.display = '';
+    audioName.textContent = music.name;
+    audioVolume.value = '0.8';
+    audioOffset.value = '0';
+    audioTrimEnd.value = '0';
+    audioEl.volume = 0.8;
+  }
 
   audioRemoveBtn.addEventListener('click', () => {
     if(music){ music.audioEl.pause(); }
@@ -1447,39 +1477,56 @@
       voiceStream.getTracks().forEach(t => t.stop());
       const blob = new Blob(voiceChunks, { type: voiceMediaRecorder.mimeType || 'audio/mp4' });
       const arrBuf = await blob.arrayBuffer();
-      const tempCtx = new (window.AudioContext || window.webkitAudioContext)();
-      try{
-        const decoded = await tempCtx.decodeAudioData(arrBuf);
-        const audioEl = new Audio();
-        voice = {
-          rawBuffer: decoded, audioEl,
-          trimStart: 0, trimEnd: decoded.duration,
-          gain: 1, pitch: 0, robot: false, echo: false,
-          normalize: false, fadeIn: false, fadeOut: false,
-          duration: decoded.duration
-        };
-        voiceTrimStart.value = '0';
-        voiceTrimEnd.value = decoded.duration.toFixed(1);
-        voiceGain.value = '1';
-        voicePitch.value = '0';
-        voicePitchLabel.textContent = 'Normale';
-        voiceNormalize.checked = false;
-        voiceFadeIn.checked = false;
-        voiceFadeOut.checked = false;
-        voiceRobot.checked = false;
-        voiceEcho.checked = false;
-        await reprocessVoice();
-        voiceEmpty.style.display = 'none';
-        voiceControls.style.display = '';
-      }catch(err){
-        alert('Impossibile elaborare la registrazione: ' + err.message);
-      }
-      await tempCtx.close();
+      await setVoiceFromArrayBuffer(arrBuf);
     };
     voiceMediaRecorder.start();
     voiceRecording = true;
     voiceRecordBtn.textContent = '⏹ Ferma registrazione';
     startTeleprompter();
+  }
+
+  // Core "set voiceover" logic, shared by the mic-recording path above and
+  // the programmatic API (setVoiceFromDataURL) below. Decodes raw audio
+  // bytes into voice.rawBuffer, exactly like a fresh recording would.
+  async function setVoiceFromArrayBuffer(arrBuf){
+    const tempCtx = new (window.AudioContext || window.webkitAudioContext)();
+    try{
+      const decoded = await tempCtx.decodeAudioData(arrBuf);
+      const audioEl = new Audio();
+      voice = {
+        rawBuffer: decoded, audioEl,
+        trimStart: 0, trimEnd: decoded.duration,
+        gain: 1, pitch: 0, robot: false, echo: false,
+        normalize: false, fadeIn: false, fadeOut: false,
+        duration: decoded.duration
+      };
+      voiceTrimStart.value = '0';
+      voiceTrimEnd.value = decoded.duration.toFixed(1);
+      voiceGain.value = '1';
+      voicePitch.value = '0';
+      voicePitchLabel.textContent = 'Normale';
+      voiceNormalize.checked = false;
+      voiceFadeIn.checked = false;
+      voiceFadeOut.checked = false;
+      voiceRobot.checked = false;
+      voiceEcho.checked = false;
+      await reprocessVoice();
+      voiceEmpty.style.display = 'none';
+      voiceControls.style.display = '';
+    }catch(err){
+      console.error('Impossibile elaborare l\'audio della voce:', err);
+      throw err;
+    }finally{
+      await tempCtx.close();
+    }
+  }
+
+  // Programmatic entry point: accepts a data: URL (e.g. an Edge-TTS
+  // generated narration) instead of requiring a live mic recording.
+  async function setVoiceFromDataURL(dataUrl){
+    const res = await fetch(dataUrl);
+    const arrBuf = await res.arrayBuffer();
+    await setVoiceFromArrayBuffer(arrBuf);
   }
 
   function stopVoiceRecording(){
@@ -1830,9 +1877,21 @@
     return /iP(hone|od|ad)/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   }
 
+  function blobToDataURL(blob){
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
   // ---------- Export ----------
-  exportBtn.addEventListener('click', async ()=>{
-    if(images.length===0) return;
+  // Refactored out of the click handler so the programmatic API
+  // (triggerExport) can call the exact same logic and get the result back
+  // as a data URL, instead of only a click-triggered download link.
+  async function performExport(){
+    if(images.length===0) throw new Error('Nessuna immagine/video caricato');
     playing = false; playBtn.textContent = '▶︎ Play';
     exportBtn.disabled = true;
     downloadLink.style.display = 'none';
@@ -1854,11 +1913,12 @@
     const mime = mimeCandidates.find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m));
     if(!mime){
       exportStatus.className = 'status err';
-      exportStatus.textContent = isIOS()
+      const msg = isIOS()
         ? 'Questo iPhone/versione iOS non supporta la registrazione video in-browser. Prova ad aggiornare iOS, oppure esporta da un computer.'
         : 'Il browser non supporta la registrazione video (MediaRecorder). Prova da Chrome desktop.';
+      exportStatus.textContent = msg;
       exportBtn.disabled = false;
-      return;
+      throw new Error(msg);
     }
 
     try{
@@ -1960,21 +2020,28 @@
       exportStatus.textContent = includesAudio
         ? `Video pronto (${ext.toUpperCase()}) con audio.`
         : `Video pronto (${ext.toUpperCase()}).` + ((music||voice) ? ' Nota: l\'audio non è stato incluso (non supportato su questo browser).' : '');
+
+      // For the programmatic API: also hand back the raw bytes as a data
+      // URL, so Puppeteer can pull the finished file straight out of
+      // page.evaluate() without needing to click the download link.
+      const dataUrl = await blobToDataURL(blob);
+      return { dataUrl, mime: mime.split(';')[0], ext, includesAudio };
     }catch(err){
       exportStatus.className = 'status err';
       exportStatus.textContent = 'Errore durante l\'esportazione: ' + err.message;
+      throw err;
     }finally{
       exporting = false;
       exportBtn.disabled = false;
     }
+  }
+
+  exportBtn.addEventListener('click', () => {
+    performExport().catch(()=>{ /* status UI already shows the error */ });
   });
 
   // ---------- Reset ----------
-  document.getElementById('resetBtn').addEventListener('click', () => {
-    if(images.length === 0 && texts.length === 0 && !music && !voice) return;
-    const ok = window.confirm('Ricominciare da zero? Foto, testi, musica, voce e stile impostati andranno persi.');
-    if(!ok) return;
-
+  function resetProject(){
     playing = false;
     if(rafHandle) cancelAnimationFrame(rafHandle);
     if(music){ music.audioEl.pause(); music = null; }
@@ -2021,7 +2088,42 @@
     updateSectionsVisibility();
     updateScrubberRange();
     renderFrame(0);
+  }
+
+  document.getElementById('resetBtn').addEventListener('click', () => {
+    if(images.length === 0 && texts.length === 0 && !music && !voice) return;
+    const ok = window.confirm('Ricominciare da zero? Foto, testi, musica, voce e stile impostati andranno persi.');
+    if(!ok) return;
+    resetProject();
   });
+
+  // ---------- Programmatic scripting API ----------
+  // Exposed on window so an external automation (e.g. a headless
+  // Puppeteer session) can drive Reel Animator directly — add frames,
+  // narration, and text, then export — instead of simulating clicks and
+  // drags on the UI, which is fragile and breaks on any interface change.
+  //
+  // Everything here reuses the exact same internal logic as the manual UI
+  // controls (addFiles, the audio/voice input handlers, exportBtn), so the
+  // output is identical to what you'd get building the reel by hand.
+  window.ReelAnimatorAPI = {
+    // dataUrl: "data:image/jpeg;base64,...". opts: {duration, effect, transition}
+    addImageFromDataURL,
+    // dataUrl: "data:video/mp4;base64,...". opts: {trimStart, trimEnd, includeAudio, effect, transition}
+    addVideoFromDataURL,
+    // dataUrl: "data:audio/mpeg;base64,...", name: string (for display only)
+    setMusicFromDataURL,
+    // dataUrl: "data:audio/wav;base64,..." (e.g. Edge-TTS output)
+    setVoiceFromDataURL,
+    // opts: {text, start, end, position, fontFamily, fontSize, color, bgOpacity}
+    addTextOverlay,
+    // Runs the full export pipeline and resolves with
+    // { dataUrl, mime, ext, includesAudio } — same file a manual export
+    // would produce, just handed back as data instead of a download link.
+    triggerExport: performExport,
+    // Clears all state, ready for the next reel in the same page session.
+    reset: resetProject
+  };
 
   // init
   renderOverlays();
